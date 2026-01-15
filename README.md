@@ -2,7 +2,7 @@
 
 Ace3 is required for many of these addons.
 
-Most have been **re-written**, some are new, and several have gained significant new features. [web:17]
+Most have been **re-written**, some are new, and several have gained significant new features.
 
 ---
 
