@@ -1,0 +1,6 @@
+## Interface: 30300
+## Title: !!!Zoom
+## Notes: Speed up your UI load by turning off garbage collection
+## Author: Antiarc
+
+mod.lua

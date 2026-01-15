@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Addon Author="Tsulong Thanksforallthefish" APIVersion="9" Name="CombatLogFix" Description="Fixes the life drain ui error glitches">
+    <Script Name="CombatLogFix.lua"/>
+    <Form Name="CombatLogFix.xml"/>
+</Addon>

@@ -1,0 +1,12 @@
+## Interface: 30300
+## Title: Compact Nameplates
+## Notes: Custom nameplates inspired by Blizzard's CompactRaidFrames
+## Author: Jake
+## Version: 0.1
+
+CompactNameplates.xml
+CompactNameplates.lua
+Settings.lua
+Nameplate.lua
+Units.lua
+Auras.lua

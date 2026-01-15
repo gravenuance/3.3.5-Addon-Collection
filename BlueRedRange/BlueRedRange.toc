@@ -1,0 +1,6 @@
+## Interface: 30300
+## Title: |cff00aaffBlue|cffff4040RedRange|r
+## Notes: Simple range/power overlays for action buttons
+## Author: You
+## Version: 1.0
+BlueRedRange.lua
