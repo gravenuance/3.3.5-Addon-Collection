@@ -30,10 +30,11 @@ end
 -------------------------------------------------
 
 local function IsNameplate(frame)
-    local healthBorder = select(2, frame:GetRegions())
-    return healthBorder
-        and healthBorder:GetObjectType() == "Texture"
-        and healthBorder:GetTexture() == [[Interface\Tooltips\Nameplate-Border]]
+    local r1, r2 = frame:GetRegions()
+    if not r1 or not r2 then return false end
+    if r2:GetObjectType() ~= "Texture" then return false end
+    local tex = r2:GetTexture() or ""
+    return tex:find("Nameplate", 1, true) or tex:find("NamePlate", 1, true)
 end
 
 -------------------------------------------------
@@ -41,7 +42,6 @@ end
 -------------------------------------------------
 
 local nameplates       = {}
-local numChildren      = 0
 
 addon.GetAllNameplates = function()
     return nameplates
@@ -58,39 +58,37 @@ end
 local function OnUpdate(self, elapsed)
     -- Hijack default nameplates
     local currentNumChildren = WorldFrame:GetNumChildren()
-    if currentNumChildren > numChildren then
-        for i = numChildren + 1, currentNumChildren do
-            local child = select(i, WorldFrame:GetChildren())
-            if IsNameplate(child) then
-                -- Save references for easier access
-                child.healthBar, child.castBar = child:GetChildren()
-                child.threatGlow, child.healthBarBorder, child.castBarBorder,
-                child.castBarShieldBorder, child.spellIcon, child.highlight,
-                child.unitName, child.unitLevel, child.skullIcon, child.raidIcon,
-                child.eliteIcon = child:GetRegions()
+    for i = 1, currentNumChildren do
+        local child = select(i, WorldFrame:GetChildren())
+        if IsNameplate(child) and not child._compactNameplatesHooked then
+            -- Save references for easier access
+            child.healthBar, child.castBar = child:GetChildren()
+            child.threatGlow, child.healthBarBorder, child.castBarBorder,
+            child.castBarShieldBorder, child.spellIcon, child.highlight,
+            child.unitName, child.unitLevel, child.skullIcon, child.raidIcon,
+            child.eliteIcon = child:GetRegions()
 
-                -- Hide or neutralize textures and text
-                child.healthBar:Hide()
-                child.castBar:SetStatusBarTexture(nil)
-                child.threatGlow:SetTexCoord(0, 0, 0, 0)
-                child.healthBarBorder:SetTexture(nil)
-                child.castBarBorder:SetTexture(nil)
-                child.castBarShieldBorder:SetTexture(nil)
-                child.spellIcon:SetWidth(0.1)
-                child.highlight:SetTexture(nil)
-                child.unitName:SetWidth(0.1)
-                child.unitLevel:SetWidth(0.1)
-                child.skullIcon:SetTexture(nil)
-                child.raidIcon:SetTexture(nil)
-                child.eliteIcon:SetTexture(nil)
+            -- Hide or neutralize textures and text
+            child.healthBar:Hide()
+            child.castBar:SetStatusBarTexture(nil)
+            child.threatGlow:SetTexCoord(0, 0, 0, 0)
+            child.healthBarBorder:SetTexture(nil)
+            child.castBarBorder:SetTexture(nil)
+            child.castBarShieldBorder:SetTexture(nil)
+            child.spellIcon:SetWidth(0.1)
+            child.highlight:SetTexture(nil)
+            child.unitName:SetWidth(0.1)
+            child.unitLevel:SetWidth(0.1)
+            child.skullIcon:SetTexture(nil)
+            child.raidIcon:SetTexture(nil)
+            child.eliteIcon:SetTexture(nil)
 
-                -- Attach custom nameplate to Blizzard's default nameplates
-                nameplates[#nameplates + 1] = addon.Nameplate:Create(child)
-            end
+            -- Attach custom nameplate to Blizzard's default nameplates
+            nameplates[#nameplates + 1] = addon.Nameplate:Create(child)
         end
-
-        numChildren = currentNumChildren
     end
+
+    numChildren = currentNumChildren
 
     -- Sort nameplates by depth
     table.sort(nameplates, NameplateDepthSort)
@@ -153,7 +151,11 @@ RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(self, ...)
     local subevent = select(2, ...)
     if subevent == "SPELL_AURA_APPLIED" then
         addon.Auras:OnApply(...)
+    elseif subevent == "SPELL_AURA_REFRESH" then
+        addon.Auras:OnApply(...)
     elseif subevent == "SPELL_AURA_REMOVED" then
         addon.Auras:OnRemove(...)
+    elseif subevent == "SPELL_AURA_STOLEN" then
+        addon.Auras:OnStolen(...)
     end
 end)

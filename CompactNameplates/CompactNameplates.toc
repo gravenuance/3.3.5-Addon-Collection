@@ -10,3 +10,4 @@ Settings.lua
 Nameplate.lua
 Units.lua
 Auras.lua
+ComboPoints.lua

@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: CRF - |cff00aaffDispel|r
+## Notes: Shows a dispellable debuff icon next to Compact Raid Frames.
+## Author: Deezus
+## Version: 1.0.0
+## Dependencies: CompactRaidFrame
+
+Core.lua

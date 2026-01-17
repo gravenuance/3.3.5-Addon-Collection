@@ -119,9 +119,8 @@ local function ReplaceBlizzardCastingBarFrame(castingBarFrame, attachTo)
 end
 
 -------------------------------------------------------
--- OnUpdate driver
+-- OnUpdate driver (hardened)
 -------------------------------------------------------
-
 local function CastingBarFrame_OnUpdate(self, elapsed)
     local currentTime = GetTime()
     local value, remainingTime = 0, 0
@@ -134,39 +133,52 @@ local function CastingBarFrame_OnUpdate(self, elapsed)
         if not startTime or not endTime or endTime <= startTime then
             self.castingEx, self.channelingEx = nil, nil
             self.fadeOutEx = true
-            -- Also clear texts safely
+
             if self.castingTime then
                 self.castingTime:SetText("")
             end
+
+            -- Also ensure bar value sane
+            self:SetValue(0)
             return
         end
 
         local duration = endTime - startTime
-        if duration <= 0 then
+        if not duration or duration <= 0 then
             self.castingEx, self.channelingEx = nil, nil
             self.fadeOutEx = true
             if self.castingTime then
                 self.castingTime:SetText("")
             end
+            self:SetValue(0)
             return
         end
 
         if self.castingEx then
             remainingTime = min(currentTime, endTime) - startTime
-            value = remainingTime / duration
+            if remainingTime < 0 then remainingTime = 0 end
         elseif self.channelingEx then
             remainingTime = endTime - currentTime
-            value = remainingTime / duration
+            if remainingTime < 0 then remainingTime = 0 end
         end
 
-        -- Clamp value
-        if value ~= value or value < 0 then value = 0 end
-        if value > 1 then value = 1 end
+        -- Compute normalized value; protect against nan/inf
+        if duration > 0 then
+            value = remainingTime / duration
+        else
+            value = 0
+        end
+
+        if value ~= value or value < 0 then
+            value = 0
+        elseif value > 1 then
+            value = 1
+        end
 
         self:SetValue(value)
 
-        -- Safe format: protect against nils
-        local rt = abs(remainingTime or 0)
+        -- Safe format for time text
+        local rt  = abs(remainingTime or 0)
         local dur = duration or 0
         if self.castingTime and dur > 0 then
             self.castingTime:SetText(string.format("%.1f/%.2f", rt, dur))
@@ -174,13 +186,15 @@ local function CastingBarFrame_OnUpdate(self, elapsed)
             self.castingTime:SetText("")
         end
 
+        -- Move spark safely
         local sparkTexture = _G[self:GetName() .. "Spark"]
         if sparkTexture then
             sparkTexture:ClearAllPoints()
-            sparkTexture:SetPoint("CENTER", self, "LEFT", value * self:GetWidth(), 0)
+            sparkTexture:SetPoint("CENTER", self, "LEFT", value * (self:GetWidth() or 0), 0)
         end
 
-        if currentTime > self.endTime then
+        -- End of cast/channel
+        if not self.endTime or currentTime > self.endTime then
             self.castingEx, self.channelingEx = nil, nil
             self.fadeOutEx = true
         end
@@ -189,8 +203,15 @@ local function CastingBarFrame_OnUpdate(self, elapsed)
         if sparkTexture then
             sparkTexture:Hide()
         end
+
         if self:GetAlpha() <= 0.0 then
+            self.fadeOutEx = nil
             self:Hide()
+            -- Clear times to avoid stale state
+            self.startTime, self.endTime = nil, nil
+            if self.castingTime then
+                self.castingTime:SetText("")
+            end
         end
     end
 end
@@ -304,8 +325,21 @@ end
 -------------------------------------------------------
 
 local function UpdateUnitBarVisibility(unit, bar)
-    if UnitExists(unit) and bar.unit == UnitGUID(unit) then
-        if GetTime() > bar.endTime then
+    local unitExists = UnitExists(unit)
+    local barEndTime = bar and bar.endTime
+
+    -- If unit/bar invalid or no endTime, just hide and bail
+    if not unitExists or not bar or not barEndTime or not bar.unit then
+        if bar then
+            bar:Hide()
+        end
+        return
+    end
+
+    if bar.unit == UnitGUID(unit) then
+        local now = GetTime()
+        -- Protect against nil or bogus endTime
+        if barEndTime and now > barEndTime then
             bar:Hide()
         else
             bar:Show()

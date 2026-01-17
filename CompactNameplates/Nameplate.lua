@@ -5,9 +5,9 @@ local FONT_PATH_BOLD       = "Interface\\AddOns\\CompactNameplates\\Media\\font-
 local BORDER_PATH          = "Interface\\AddOns\\CompactNameplates\\Media\\border.tga"
 local FONT_FLAG            = "OUTLINE"
 local MAX_AURA_FRAMES      = 5
-local LARGE_AURA_SIZE      = 21
-local SMALL_AURA_SIZE      = 17
-local AURA_SPACING         = 3
+local AURA_SIZE            = 28
+local AURA_SPACING         = 4
+local TOTEM_SIZE           = 32
 
 local DEBUFF_COLOR         = { r = 1, g = 0, b = 0 }   -- fallback for debuffs
 local BUFF_COLOR           = { r = 0, g = 0.8, b = 0 } -- generic buffs
@@ -37,17 +37,16 @@ local HIGH_PRIORITY_TOTEMS = {
 -- Localized globals
 -------------------------------------------------
 
-local UnitExists          = UnitExists
-local UnitGUID            = UnitGUID
-local UnitName            = UnitName
-local UnitClass           = UnitClass
-local UnitIsPlayer        = UnitIsPlayer
-local UnitCastingInfo     = UnitCastingInfo
-local UnitChannelInfo     = UnitChannelInfo
-local UnitHealthMax       = UnitHealthMax
-local GetTime             = GetTime
-local GetSpellInfo        = GetSpellInfo
-local SecondsToTimeAbbrev = SecondsToTimeAbbrev
+local UnitExists      = UnitExists
+local UnitGUID        = UnitGUID
+local UnitName        = UnitName
+local UnitClass       = UnitClass
+local UnitIsPlayer    = UnitIsPlayer
+local UnitCastingInfo = UnitCastingInfo
+local UnitChannelInfo = UnitChannelInfo
+local UnitHealthMax   = UnitHealthMax
+local GetTime         = GetTime
+local GetSpellInfo    = GetSpellInfo
 
 -------------------------------------------------
 -- Helpers: base frame / default nameplate
@@ -68,8 +67,7 @@ local function IsHighPriorityTotem(unitID)
     local name = UnitName(unitID)
     if not name then return false end
 
-    -- Substring matching so localization / formatting does not break it
-    name = name:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") -- strip color codes if any
+    name = name:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 
     return name:find("Tremor") or name:find("Grounding")
         or name:find("Poison Cleansing") or name:find("Cleansing") or name:find("Earthbind")
@@ -108,7 +106,13 @@ local function IsMouseover(nameplate)
 end
 
 function Nameplate:IsTarget(nameplate)
-    local default = GetDefaultFrame(nameplate)
+    if not nameplate then
+        return false
+    end
+    local default = nameplate:GetParent()
+    if not default then
+        return false
+    end
     return UnitExists("target") and default:GetAlpha() == 1
 end
 
@@ -158,6 +162,21 @@ function Nameplate:Get(unitGUID)
     return nameplatesByGUID[unitGUID]
 end
 
+local function IsInDungeon()
+    local inInstance, instanceType = IsInInstance()
+    return inInstance and instanceType == "party"
+end
+
+local function IsInRaidInstance()
+    local inInstance, instanceType = IsInInstance()
+    return inInstance and instanceType == "raid"
+end
+
+--[[ local function IsInArenaInstance()
+    local inInstance, instanceType = IsInInstance()
+    return inInstance and instanceType == "arena"
+end ]]
+
 -- Cached candidate list
 local UNIT_CANDIDATES
 
@@ -168,10 +187,15 @@ local function BuildUnitCandidates()
 
     local candidates = {}
 
-    -- Arena enemies first
+    --if IsInArenaInstance() then
     for i = 1, 5 do
         candidates[#candidates + 1] = "arena" .. i
+        candidates[#candidates + 1] = "arena" .. i .. "target"
+        candidates[#candidates + 1] = "arenapet" .. i
+        candidates[#candidates + 1] = "arenapet" .. i .. "target"
     end
+    --end
+
 
     -- Player + pet
     candidates[#candidates + 1] = "player"
@@ -182,26 +206,31 @@ local function BuildUnitCandidates()
     candidates[#candidates + 1] = "focus"
     candidates[#candidates + 1] = "mouseover"
 
-    -- Party + pets
-    for i = 1, 5 do
-        candidates[#candidates + 1] = "party" .. i
-        candidates[#candidates + 1] = "partypet" .. i
+    candidates[#candidates + 1] = "targettarget"
+    candidates[#candidates + 1] = "focustarget"
+    candidates[#candidates + 1] = "mouseovertarget"
+
+    if GetNumPartyMembers() > 0 then
+        for i = 1, 5 do
+            candidates[#candidates + 1] = "party" .. i
+            candidates[#candidates + 1] = "partypet" .. i
+            candidates[#candidates + 1] = "party" .. i .. "target"
+            candidates[#candidates + 1] = "partypet" .. i .. "target"
+        end
+    elseif GetNumRaidMembers() > 0 then
+        for i = 1, 40 do
+            candidates[#candidates + 1] = "raid" .. i
+            candidates[#candidates + 1] = "raidpet" .. i
+            candidates[#candidates + 1] = "raid" .. i .. "target"
+            candidates[#candidates + 1] = "raidpet" .. i .. "target"
+        end
     end
 
-    -- Raid + pets
-    for i = 1, 40 do
-        candidates[#candidates + 1] = "raid" .. i
-        candidates[#candidates + 1] = "raidpet" .. i
-    end
-
-    -- Boss frames
-    for i = 1, 5 do
-        candidates[#candidates + 1] = "boss" .. i
-    end
-
-    -- Nameplate units (if exposed)
-    for i = 1, 40 do
-        candidates[#candidates + 1] = "nameplate" .. i
+    if IsInDungeon() or IsInRaidInstance() then
+        for i = 1, 5 do
+            candidates[#candidates + 1] = "boss" .. i
+            candidates[#candidates + 1] = "boss" .. i .. "target"
+        end
     end
 
     UNIT_CANDIDATES = candidates
@@ -229,6 +258,22 @@ local function GetUnitID(nameplate)
     end
 
     return nil
+end
+
+function Nameplate:GetUnitID(nameplate)
+    return GetUnitID(nameplate)
+end
+
+function addon.Nameplate:IsTargetPlate(nameplate)
+    if not nameplate then
+        return false
+    end
+    local unitID = Nameplate:GetUnitID(nameplate)
+    if unitID == "target" then
+        return true
+    end
+    local default = nameplate:GetParent()
+    return UnitExists("target") and default and default:GetAlpha() == 1
 end
 
 -------------------------------------------------
@@ -262,6 +307,14 @@ local function GetUnitName(nameplate)
     local default = GetDefaultFrame(nameplate)
     local text = default.unitName:GetText()
     return UnitNameAbbrev(text, 22)
+end
+
+function addon.Nameplate:GetPlateName(nameplate)
+    local default = nameplate and nameplate:GetParent()
+    if not default or not default.unitName then
+        return nil
+    end
+    return default.unitName:GetText()
 end
 
 local function GetUnitLevel(nameplate)
@@ -349,59 +402,6 @@ local function UpdateNameplateUnitInfo(nameplate)
         nameplate.healthBar.unitName:SetText(unitName)
     end
     nameplate.healthBar.unitLevel:SetText(unitLevel)
-end
-
-local function UpdateNameplateGUID(nameplate, unitID)
-    if not unitID or not UnitExists(unitID) then
-        return
-    end
-
-    local unitGUID = UnitGUID(unitID)
-    if not unitGUID or unitGUID == nameplate.unitGUID then
-        return
-    end
-
-    local conflict = Nameplate:Get(unitGUID)
-    if conflict then
-        ClearGUID(conflict)
-    end
-
-    SetGUID(nameplate, unitGUID)
-
-    local unitName   = GetUnitName(nameplate)
-    local unitHealth = GetUnitHealth(nameplate)
-    local _, class   = UnitClass(unitID)
-
-    addon.Units:SetGUID(unitGUID, unitName, unitHealth, class)
-end
-
--------------------------------------------------
--- Debug casting helper (optional)
--------------------------------------------------
-
-local function DebugCasting(unitID)
-    if not UnitExists(unitID) then
-        print("DBG Cast:", unitID, "does not exist")
-        return
-    end
-
-    local ci = { UnitCastingInfo(unitID) }
-    local ch = { UnitChannelInfo(unitID) }
-
-    local function dump(prefix, t)
-        if #t == 0 then
-            print(prefix, "nil")
-        else
-            local s = prefix
-            for i, v in ipairs(t) do
-                s = s .. " [" .. i .. "]=" .. tostring(v)
-            end
-            print(s)
-        end
-    end
-
-    dump("DBG UnitCastingInfo(" .. unitID .. "):", ci)
-    dump("DBG UnitChannelInfo(" .. unitID .. "):", ch)
 end
 
 -------------------------------------------------
@@ -586,7 +586,6 @@ local function AuraFrame_OnUpdate(self, elapsed)
         if self.timeLeft > 1 then
             t = math.floor(self.timeLeft + 0.5)
         elseif self.timeLeft > 0 then
-            -- Keep showing 1 while there is any time left
             t = 1
         else
             t = 0
@@ -617,7 +616,7 @@ end
 
 local function AuraFrame_SetTimer(self, expirationTime)
     if self.duration then
-        self.duration:SetFont(FONT_PATH_BOLD, 18, FONT_FLAG)
+        self.duration:SetFont(FONT_PATH_BOLD, math.ceil(AURA_SIZE * 0.5), FONT_FLAG)
     end
     if not self.timeLeft then
         self:SetScript("OnUpdate", AuraFrame_OnUpdate)
@@ -625,29 +624,11 @@ local function AuraFrame_SetTimer(self, expirationTime)
     self.timeLeft = expirationTime - GetTime()
 end
 
---[[ local function ConfigureAuraFrame(frame, spellID, duration, expirationTime, auraTypeKey, dispelType)
-    local _, _, spellIcon = GetSpellInfo(spellID)
-    frame.icon:SetTexture(spellIcon)
-    AuraFrame_SetTimer(frame, expirationTime)
-
-    local color
-    if auraTypeKey == "BUFF" then
-        color = (dispelType and DISPEL_COLORS[dispelType]) or BUFF_COLOR
-    else
-        color = (dispelType and DISPEL_COLORS[dispelType]) or DEBUFF_COLOR
-    end
-
-    if frame.border and color then
-        frame.border:SetVertexColor(color.r, color.g, color.b)
-    end
-end ]]
-
 local function ConfigureAuraFrame(frame, spellID, duration, expirationTime, auraTypeKey, dispelType)
     local _, _, spellIcon = GetSpellInfo(spellID)
 
     frame.icon:SetTexture(spellIcon)
 
-    -- Hard reset timer state
     frame.timeLeft = nil
     frame:SetScript("OnUpdate", nil)
 
@@ -685,7 +666,7 @@ local function CollectSorted(guid, auraType)
     local collected = {}
     local idx = 1
     local emptyHits = 0
-    local MAX_EMPTY = 20 -- enough to cover any realistic list
+    local MAX_EMPTY = 20
 
     while emptyHits < MAX_EMPTY do
         local spellID, duration, expirationTime, auraTypeKey, dispelType =
@@ -716,89 +697,6 @@ local function CollectSorted(guid, auraType)
 
     return collected
 end
---[[ local function CollectSorted(guid, auraType)
-    local collected = {}
-    local idx = 1
-
-    while true do
-        local spellID, duration, expirationTime, auraTypeKey, dispelType =
-            addon.Auras:Get(guid, auraType, idx)
-
-        if not spellID or not duration or not expirationTime then
-            break
-        end
-
-        collected[#collected + 1] = {
-            spellID        = spellID,
-            duration       = duration,
-            expirationTime = expirationTime,
-            auraTypeKey    = auraTypeKey,
-            dispelType     = dispelType,
-        }
-
-        idx = idx + 1
-    end
-
-    table.sort(collected, function(a, b)
-        return a.duration > b.duration
-    end)
-
-    return collected
-end ]]
-
---[[ local function LayoutRow(frames, collected, container)
-    local offset = 0
-    for i, frame in ipairs(frames) do
-        local aura = collected[i]
-        if aura then
-            ConfigureAuraFrame(
-                frame,
-                aura.spellID,
-                aura.duration,
-                aura.expirationTime,
-                aura.auraTypeKey,
-                aura.dispelType
-            )
-            offset = LayoutAuraFrame(frame, i, offset, container)
-        else
-            frame:Hide()
-        end
-    end
-    container:SetWidth(offset)
-end ]]
-
---[[ local function LayoutRow(frames, collected, container)
-    local offset = 0
-    local frameIndex = 1
-
-    -- Assign auras sequentially to frames
-    for auraIndex = 1, #collected do
-        local aura = collected[auraIndex]
-        local frame = frames[frameIndex]
-        if not frame then
-            break -- no more frames available
-        end
-
-        ConfigureAuraFrame(
-            frame,
-            aura.spellID,
-            aura.duration,
-            aura.expirationTime,
-            aura.auraTypeKey,
-            aura.dispelType
-        )
-        offset = LayoutAuraFrame(frame, frameIndex, offset, container)
-
-        frameIndex = frameIndex + 1
-    end
-
-    -- Hide any leftover frames
-    for i = frameIndex, #frames do
-        frames[i]:Hide()
-    end
-
-    container:SetWidth(offset)
-end ]]
 
 local function LayoutRow(frames, collected, container)
     local offset = 0
@@ -906,6 +804,10 @@ local function ResolveOrFallbackGUID(nameplate)
     local unitHealth = GetUnitHealth(nameplate)
     local unitGUID   = addon.Units:GetGUID(unitName, unitHealth)
 
+    if not unitGUID then
+        unitGUID = Nameplate:GetGUIDByNameAndHealthFromPlate(nameplate)
+    end
+
     if unitGUID and not Nameplate:Get(unitGUID) then
         SetGUID(nameplate, unitGUID)
     end
@@ -919,6 +821,11 @@ local function OnShow(nameplate)
     nameplate._lastGUID = nameplate.unitGUID
     SetClassColor(nameplate)
     Nameplate:UpdateAuras(nameplate)
+
+    if nameplate.combo and addon.ComboPoints and addon.ComboPoints.Update then
+        local isTarget = Nameplate:IsTarget(nameplate)
+        addon.ComboPoints:Update(nameplate.combo, isTarget)
+    end
 end
 
 local function OnHide(nameplate)
@@ -926,18 +833,6 @@ local function OnHide(nameplate)
     nameplate._lastGUID = nil
     Nameplate:UpdateAuras(nameplate)
 end
-
---[[ local function OnUpdate(nameplate, elapsed)
-    local default = GetDefaultFrame(nameplate)
-
-    nameplate.raidIcon:SetTexCoord(default.raidIcon:GetTexCoord())
-    nameplate.raidIcon:SetShown(default.raidIcon:IsShown())
-
-
-    ResolveOrFallbackGUID(nameplate)
-    Nameplate:UpdateAuras(nameplate)
-    SetClassColor(nameplate)
-end ]]
 
 local function OnUpdate(nameplate, elapsed)
     local default = GetDefaultFrame(nameplate)
@@ -952,7 +847,11 @@ local function OnUpdate(nameplate, elapsed)
         nameplate.totemIcon:Hide()
     end
 
-    -- Totem detection as before (unitID + name fallback)
+    if nameplate.combo and addon.ComboPoints and addon.ComboPoints.Update then
+        local isTarget = Nameplate:IsTarget(nameplate)
+        addon.ComboPoints:Update(nameplate.combo, isTarget)
+    end
+
     if unitID and UnitExists(unitID) and IsTotemUnit(unitID) then
         showPlate = false
 
@@ -978,11 +877,9 @@ local function OnUpdate(nameplate, elapsed)
         end
     end
 
-    nameplate:SetShown(showPlate) -- hide whole custom frame
-    -- Important: do NOT touch default.healthBar/default.castBar here
+    nameplate:SetShown(showPlate)
 
     if showPlate then
-        ResolveOrFallbackGUID(nameplate)
         Nameplate:UpdateAuras(nameplate)
         SetClassColor(nameplate)
     end
@@ -994,9 +891,16 @@ end
 
 function Nameplate:Create(default)
     local nameplate = CreateFrame("Frame", nil, default, "NameplateFrameTemplate")
-    local nameFS    = nameplate.healthBar.unitName
-    local levelFS   = nameplate.healthBar.unitLevel
-    local pad       = 0
+    nameplate:ClearAllPoints()
+    nameplate:SetPoint("CENTER", default, "CENTER", 0, 10)
+    if addon.ComboPoints and addon.ComboPoints.Create then
+        nameplate.combo = addon.ComboPoints:Create(nameplate)
+        nameplate.combo:ClearAllPoints()
+        nameplate.combo:SetPoint("TOP", nameplate, "BOTTOM", 0, 10)
+    end
+    local nameFS  = nameplate.healthBar.unitName
+    local levelFS = nameplate.healthBar.unitLevel
+    local pad     = 0
     do
         local _, _, defaultFlags = nameFS:GetFont()
         nameFS:SetFont(FONT_PATH, 14, defaultFlags or FONT_FLAG)
@@ -1008,13 +912,13 @@ function Nameplate:Create(default)
     end
     -- Debuffs row (closer to the plate)
     nameplate.debuffs = CreateFrame("Frame", nil, nameplate)
-    nameplate.debuffs:SetPoint("BOTTOMLEFT", nameplate, "TOPLEFT", 0, 10)
-    nameplate.debuffs:SetHeight(LARGE_AURA_SIZE)
+    nameplate.debuffs:SetPoint("BOTTOMLEFT", nameplate, "TOPLEFT", 0, math.ceil(AURA_SIZE * 0.3))
+    nameplate.debuffs:SetHeight(AURA_SIZE)
 
     -- Buffs row (above debuffs)
     nameplate.buffs = CreateFrame("Frame", nil, nameplate)
-    nameplate.buffs:SetPoint("BOTTOMLEFT", nameplate, "TOPLEFT", 0, 45)
-    nameplate.buffs:SetHeight(LARGE_AURA_SIZE)
+    nameplate.buffs:SetPoint("BOTTOMLEFT", nameplate, "TOPLEFT", 0, math.ceil(AURA_SIZE * 1.6))
+    nameplate.buffs:SetHeight(AURA_SIZE)
 
     -- Create frames for DEBUFFS
     for i = 1, MAX_AURA_FRAMES do
@@ -1022,6 +926,7 @@ function Nameplate:Create(default)
         if frame.icon then
             frame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
+        frame:SetSize(AURA_SIZE, AURA_SIZE)
         if not frame.border then
             local border = frame:CreateTexture(nil, "OVERLAY")
             frame.border = border
@@ -1038,12 +943,13 @@ function Nameplate:Create(default)
         durationBG:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", pad, -pad)
         frame.durationBG = durationBG
 
-        duration:SetFont(FONT_PATH_BOLD, 18, FONT_FLAG)
+        duration:SetFont(FONT_PATH_BOLD, math.ceil(AURA_SIZE * 0.5), FONT_FLAG)
     end
 
     -- Create frames for BUFFS
     for i = 1, MAX_AURA_FRAMES do
         local frame = CreateFrame("Frame", nil, nameplate.buffs, "NameplateAuraFrameTemplate")
+        frame:SetSize(AURA_SIZE, AURA_SIZE)
         if frame.icon then
             frame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
@@ -1063,7 +969,7 @@ function Nameplate:Create(default)
         durationBG:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", pad, -pad)
         frame.durationBG = durationBG
 
-        duration:SetFont(FONT_PATH_BOLD, 18, FONT_FLAG)
+        duration:SetFont(FONT_PATH_BOLD, math.ceil(AURA_SIZE * 0.5), FONT_FLAG)
     end
 
     -- Precompute ordered aura frame lists (avoid GetChildren/sort every update)
@@ -1080,8 +986,8 @@ function Nameplate:Create(default)
     local default = nameplate:GetParent()
 
     local totemIconFrame = CreateFrame("Frame", nil, default)
-    totemIconFrame:SetSize(32, 32)
-    totemIconFrame:SetPoint("CENTER", default, "CENTER", 0, 10)
+    totemIconFrame:SetSize(TOTEM_SIZE, TOTEM_SIZE)
+    totemIconFrame:SetPoint("CENTER", default, "CENTER", 0, 20)
     totemIconFrame:Hide()
 
     -- Icon texture (zoomed like aura icons)
