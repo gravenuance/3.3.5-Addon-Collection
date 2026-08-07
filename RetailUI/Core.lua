@@ -144,12 +144,32 @@ end
 
 function CheckSettingsExists(self, widgets)
 	local profileWidgets = RUI.DB.profile.widgets
+	local missing = false
 	for _, widget in pairs(widgets) do
 		if profileWidgets[widget] == nil then
-			self:LoadDefaultSettings()
+			missing = true
 			break
 		end
 	end
+
+	if missing then
+		-- LoadDefaultSettings() unconditionally overwrites every widget key
+		-- for this module, not just the missing one(s). Preserve any widget
+		-- that was already configured across the reset.
+		local preserved = {}
+		for _, widget in pairs(widgets) do
+			preserved[widget] = profileWidgets[widget]
+		end
+
+		self:LoadDefaultSettings()
+
+		for widget, saved in pairs(preserved) do
+			if saved ~= nil then
+				profileWidgets[widget] = saved
+			end
+		end
+	end
+
 	self:UpdateWidgets()
 end
 

@@ -6,6 +6,14 @@ local DISPellableTypes = {
     Poison  = true,
 }
 
+-- Standard Blizzard debuff-type colors (matches DebuffTypeColor)
+local DebuffBorderColor = {
+    Magic   = { 0.20, 0.60, 1.00 },
+    Curse   = { 0.60, 0.00, 1.00 },
+    Disease = { 0.60, 0.40, 0.00 },
+    Poison  = { 0.00, 0.60, 0.00 },
+}
+
 local function CreateDispelIcon(frame)
     if frame.DispelIcon then return end
 
@@ -19,11 +27,10 @@ local function CreateDispelIcon(frame)
     tex:SetTexCoord(0.08, 0.92, 0.08, 0.92) -- zoomed in
     icon.icon = tex
 
-    -- Simple blue border; replace with a textured border if desired
     local border = icon:CreateTexture(nil, "OVERLAY")
     border:SetPoint("TOPLEFT", -1, 1)
     border:SetPoint("BOTTOMRIGHT", 1, -1)
-    border:SetColorTexture(0, 0.44, 1, 1)
+    border:SetColorTexture(1, 1, 1, 1) -- recolored per debuff type in UpdateDispelIcon
     icon.border = border
 
     icon:Hide()
@@ -41,6 +48,7 @@ local function UpdateDispelIcon(frame)
     end
 
     local bestTexture
+    local bestType
     local bestRemaining = -1
 
     local index = 1
@@ -58,6 +66,7 @@ local function UpdateDispelIcon(frame)
             if remaining > bestRemaining then
                 bestRemaining = remaining
                 bestTexture = texture
+                bestType = debuffType
             end
         end
 
@@ -66,6 +75,8 @@ local function UpdateDispelIcon(frame)
 
     if bestTexture then
         iconFrame.icon:SetTexture(bestTexture)
+        local color = DebuffBorderColor[bestType] or DebuffBorderColor.Magic
+        iconFrame.border:SetVertexColor(color[1], color[2], color[3])
         iconFrame:Show()
     else
         iconFrame:Hide()

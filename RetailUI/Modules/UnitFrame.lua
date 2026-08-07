@@ -943,7 +943,9 @@ end
 
 local function PlayerFrame_OnUpdate(self, elapsed)
     local playerRestIcon = PlayerRestIcon
-    AnimateTexCoords(playerRestIcon, 512, 512, 64, 64, 42, elapsed, 0.05)
+    if playerRestIcon:IsShown() then
+        AnimateTexCoords(playerRestIcon, 512, 512, 64, 64, 42, elapsed, 0.05)
+    end
 end
 
 local function PlayerFrame_UpdateStatus()

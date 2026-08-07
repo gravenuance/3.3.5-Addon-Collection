@@ -9,6 +9,10 @@ local AURA_SIZE            = 28
 local AURA_SPACING         = 4
 local TOTEM_SIZE           = 32
 
+-- Combat-log events already keep aura data accurate in real time; this is
+-- just a periodic safety net against a missed event, not the primary path.
+local AURA_SAFETY_REFRESH_INTERVAL = 2
+
 local DEBUFF_COLOR         = { r = 1, g = 0, b = 0 }   -- fallback for debuffs
 local BUFF_COLOR           = { r = 0, g = 0.8, b = 0 } -- generic buffs
 local DISPEL_COLORS        = {
@@ -156,6 +160,7 @@ local function ClearGUID(nameplate)
     if not guid then return end
     nameplatesByGUID[guid] = nil
     nameplate.unitGUID = nil
+    nameplate._cachedUnitID = nil
 end
 
 function Nameplate:Get(unitGUID)
@@ -237,14 +242,35 @@ local function BuildUnitCandidates()
     return candidates
 end
 
+-- Cheap re-validation of a nameplate's last-known unit token before paying
+-- for a full BuildUnitCandidates() scan (which, in a 40-man raid, is ~180
+-- unit tokens - each checked with UnitExists/UnitGUID). Token-to-GUID
+-- mapping is stable frame-to-frame for the vast majority of ticks, so this
+-- turns the common case into 2 cheap API calls instead of hundreds.
+local function ResolveUnitIDForGUID(nameplate, guid)
+    local cached = nameplate._cachedUnitID
+    if cached and UnitExists(cached) and UnitGUID(cached) == guid then
+        return cached
+    end
+
+    local candidates = BuildUnitCandidates()
+    for _, unitID in ipairs(candidates) do
+        if UnitExists(unitID) and UnitGUID(unitID) == guid then
+            nameplate._cachedUnitID = unitID
+            return unitID
+        end
+    end
+
+    nameplate._cachedUnitID = nil
+    return nil
+end
+
 local function GetUnitID(nameplate)
     local guid = nameplate.unitGUID
     if guid then
-        local candidates = BuildUnitCandidates()
-        for _, unitID in ipairs(candidates) do
-            if UnitExists(unitID) and UnitGUID(unitID) == guid then
-                return unitID
-            end
+        local unitID = ResolveUnitIDForGUID(nameplate, guid)
+        if unitID then
+            return unitID
         end
     end
 
@@ -794,6 +820,16 @@ local function ResolveInitialUnit(nameplate)
 end
 
 local function ResolveOrFallbackGUID(nameplate)
+    -- Fast path: GUID already known, just re-validate its current token
+    -- instead of paying for a full name-matching candidate scan.
+    local guid = nameplate.unitGUID
+    if guid then
+        local unitID = ResolveUnitIDForGUID(nameplate, guid)
+        if unitID then
+            return unitID
+        end
+    end
+
     local unitID = ResolveInitialUnit(nameplate)
     if unitID then
         return unitID
@@ -808,11 +844,17 @@ local function ResolveOrFallbackGUID(nameplate)
         unitGUID = Nameplate:GetGUIDByNameAndHealthFromPlate(nameplate)
     end
 
-    if unitGUID and not Nameplate:Get(unitGUID) then
-        SetGUID(nameplate, unitGUID)
+    if unitGUID then
+        if not Nameplate:Get(unitGUID) then
+            SetGUID(nameplate, unitGUID)
+        end
+        -- Previously this always returned the (still-nil) `unitID` local
+        -- from the primary resolution attempt above, even after a
+        -- successful fallback GUID lookup - now actually resolve a token.
+        return ResolveUnitIDForGUID(nameplate, unitGUID)
     end
 
-    return unitID
+    return nil
 end
 
 local function OnShow(nameplate)
@@ -880,8 +922,20 @@ local function OnUpdate(nameplate, elapsed)
     nameplate:SetShown(showPlate)
 
     if showPlate then
-        Nameplate:UpdateAuras(nameplate)
         SetClassColor(nameplate)
+
+        -- Auras are already kept accurate in real time via combat-log
+        -- events (Auras:OnApply/OnRemove/OnStolen -> UpdateForGUID, see
+        -- Auras.lua/CompactNameplates.lua) and via OnShow when a plate
+        -- first appears. Re-fetching + re-sorting + re-laying-out every
+        -- single frame for every visible plate was pure redundant work on
+        -- top of that; this periodic pass is just a safety net in case an
+        -- event was ever missed.
+        nameplate._auraRefreshElapsed = (nameplate._auraRefreshElapsed or 0) + (elapsed or 0)
+        if nameplate._auraRefreshElapsed >= AURA_SAFETY_REFRESH_INTERVAL then
+            nameplate._auraRefreshElapsed = 0
+            Nameplate:UpdateAuras(nameplate)
+        end
     end
 end
 
@@ -1015,8 +1069,8 @@ function Nameplate:Create(default)
         OnHide(nameplate)
     end)
 
-    default:HookScript("OnUpdate", function()
-        OnUpdate(nameplate)
+    default:HookScript("OnUpdate", function(_, elapsed)
+        OnUpdate(nameplate, elapsed)
     end)
 
     default.healthBar:HookScript("OnValueChanged", function(_, value)

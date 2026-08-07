@@ -24,13 +24,10 @@ local frame, slices = NineSlice:Create({
 local NineSlice = {}
 _G.NineSlice = NineSlice -- optional global export
 
-local function SetAtlasTexture(texture, atlas)
-    -- assumes you have your own atlas resolver elsewhere
-    -- here we just support a raw texture path string
-    if type(atlas) == "string" and atlas ~= "" then
-        texture:SetTexture(atlas)
-    end
-end
+-- Uses the real SetAtlasTexture from Atlas.lua (loads before this file per
+-- RetailUI.toc), which resolves atlas names to texcoords/asset paths. A
+-- previous local shim here just did texture:SetTexture(atlasName), which
+-- silently failed since atlas names aren't literal texture file paths.
 
 local function CreateEdgeTexture(frame, layer, point, relPoint, x, y, atlas)
     local tex = frame:CreateTexture(nil, layer)

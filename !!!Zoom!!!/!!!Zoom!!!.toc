@@ -2,5 +2,6 @@
 ## Title: !!!Zoom
 ## Notes: Speed up your UI load by turning off garbage collection
 ## Author: Antiarc
+## SavedVariables: ZoomGCDB
 
 mod.lua

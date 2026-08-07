@@ -1,0 +1,9 @@
+## Interface: 30300
+## Title: |cff00ffffArena Frames|r
+## Notes: Tracks deez nuts in arena frames.
+## Version: 1.0.0
+## Author: Zulban
+## DefaultState: Enabled
+## SavedVariables: RAFDB, RAF
+
+RAF.lua

@@ -33,6 +33,12 @@ local function ToggleAllBuffButtons(show)
 end
 
 local function ReplaceBlizzardFrame(frame)
+    -- Anchor the real buff/debuff icon row to our draggable frame so
+    -- Editor Mode repositioning actually moves the buffs, not just the
+    -- toggle button and consolidated-overflow anchors below.
+    BuffFrame:ClearAllPoints()
+    BuffFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+
     frame.toggleButton = frame.toggleButton or CreateFrame("Button", nil, UIParent)
     local toggleButton = frame.toggleButton
 

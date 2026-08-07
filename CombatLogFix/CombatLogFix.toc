@@ -1,0 +1,6 @@
+## Interface: 30300
+## Title: CombatLogFix
+## Notes: Detects a stalled combat log during combat and resets it
+## Author: Tsulong Thanksforallthefish
+
+CombatLogFix.lua

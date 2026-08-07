@@ -96,7 +96,9 @@ local function ReplaceBlizzardFrame(frame)
     minimapZoneText:SetJustifyH("LEFT")
 
     local timeClockButton = TimeManagerClockButton
-    timeClockButton:GetRegions():Hide()
+    for _, region in ipairs({ timeClockButton:GetRegions() }) do
+        region:Hide()
+    end
     timeClockButton:ClearAllPoints()
     timeClockButton:SetPoint("RIGHT", minimapBorderTop, "RIGHT", -5, 0)
     timeClockButton:SetWidth(30)
@@ -195,13 +197,15 @@ local function ReplaceBlizzardFrame(frame)
     local minimapFrame = Minimap
     minimapFrame:ClearAllPoints()
     minimapFrame:SetPoint("CENTER", minimapCluster, "CENTER", 0, 0)
-    minimapFrame:SetSize(170, 170)
+    minimapFrame:SetSize(145, 145)
 
     local minimapBackdropTexture = MinimapBackdrop
     minimapBackdropTexture:ClearAllPoints()
     minimapBackdropTexture:SetPoint("CENTER", minimapFrame, "CENTER", 0, 3)
 
     local minimapBorderTexture = MinimapBorder
+    minimapBorderTexture:ClearAllPoints()
+    minimapBorderTexture:SetPoint("CENTER", minimapFrame, "CENTER", 0, 0)
     SetAtlasTexture(minimapBorderTexture, 'Minimap-Border')
 
     local zoomInButton = MinimapZoomIn
@@ -253,7 +257,7 @@ local function ReplaceBlizzardFrame(frame)
 end
 
 local function CreateMinimapBorderFrame(width, height)
-    local minimapBorderFrame = CreateFrame('Frame', UIParent)
+    local minimapBorderFrame = CreateFrame('Frame', nil, UIParent)
     minimapBorderFrame:SetSize(width, height)
     minimapBorderFrame:SetScript("OnUpdate", function(self)
         local angle = GetPlayerFacing()
@@ -311,7 +315,6 @@ local function Minimap_UpdateRotationSetting()
 end
 
 local selectedRaidDifficulty
-local allowedRaidDifficulty
 
 local function MiniMapInstanceDifficulty_OnEvent(self)
     local _, instanceType, difficulty, _, maxPlayers, playerDifficulty, isDynamicInstance = GetInstanceInfo()
@@ -328,17 +331,6 @@ local function MiniMapInstanceDifficulty_OnEvent(self)
                     end
                     isHeroic = true
                 end
-                -- if modified difficulty is normal then you are allowed to select heroic, and vice-versa
-                if selectedRaidDifficulty == 1 then
-                    allowedRaidDifficulty = 3
-                elseif selectedRaidDifficulty == 2 then
-                    allowedRaidDifficulty = 4
-                elseif selectedRaidDifficulty == 3 then
-                    allowedRaidDifficulty = 1
-                elseif selectedRaidDifficulty == 4 then
-                    allowedRaidDifficulty = 2
-                end
-                allowedRaidDifficulty = "RAID_DIFFICULTY" .. allowedRaidDifficulty
             elseif difficulty > 2 then
                 isHeroic = true
             end

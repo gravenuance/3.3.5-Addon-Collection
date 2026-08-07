@@ -12,13 +12,11 @@ Module.repExpBar = nil
 Module.bagsBar = nil
 Module.microMenuBar = nil
 
+-- Only ever called on internal ASCII editor-mode labels (e.g. "ActionBar4"),
+-- never localized text, so no need for the UTF-8-aware splitting retail's
+-- version has.
 local function verticalString(str)
-    local _, len = str:gsub("[^\128-\193]", "")
-    if (len == #str) then
-        return str:gsub(".", "%1\n")
-    else
-        return str:gsub("([%z\1-\127\194-\244][\128-\191]*)", "%1\n")
-    end
+    return str:gsub(".", "%1\n")
 end
 
 local MainMenuBarNineSlice = nil
@@ -441,6 +439,11 @@ local function ReplaceBlizzardRepExpBarFrame(frameBar)
 
     for _, region in pairs { mainMenuExpBar:GetRegions() } do
         if region:GetObjectType() == 'Texture' and region:GetDrawLayer() == 'BACKGROUND' then
+            -- Anchor before texturing, matching the reputation bar's
+            -- background below (line ~468) - without this the atlas's
+            -- own baked-in size can end up stale relative to mainMenuExpBar's
+            -- width, the same root cause as the MinimapBorder bug.
+            region:SetAllPoints(mainMenuExpBar)
             SetAtlasTexture(region, 'ExperienceBar-Background')
         end
     end
@@ -825,6 +828,14 @@ local function MainMenuExpBar_Update()
 end
 
 local function ShapeshiftBar_Update()
+    if InCombatLockdown() then
+        -- ShapeshiftButton is a secure/protected frame; repositioning it
+        -- while in combat lockdown throws ADDON_ACTION_BLOCKED. This hook
+        -- fires again on the next stance-bar update (very common in combat
+        -- for druids/rogues/warriors), so it's safe to just skip for now.
+        return
+    end
+
     local button = _G['ShapeshiftButton' .. 1]
     button:ClearAllPoints()
     button:SetPoint("LEFT", Module.actionBars[SHAPESHIFT_ACTION_BAR_ID], "LEFT", 0)
@@ -1099,6 +1110,23 @@ function Module:OnDisable()
 end
 
 function Module:PLAYER_ENTERING_WORLD()
+    if InCombatLockdown() then
+        -- Reparenting/resizing the secure Blizzard action bar frames while
+        -- in combat lockdown (e.g. /reload mid-fight, or zoning into an
+        -- instance already engaged) throws ADDON_ACTION_BLOCKED. Defer
+        -- until combat ends instead.
+        if not self.combatLockdownFrame then
+            local waiter = CreateFrame("Frame")
+            self.combatLockdownFrame = waiter
+            waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+            waiter:SetScript("OnEvent", function(frame)
+                frame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                Module:PLAYER_ENTERING_WORLD()
+            end)
+        end
+        return
+    end
+
     RemoveBlizzardFrames()
 
     for _, actionBar in pairs(self.actionBars) do
@@ -1135,6 +1163,14 @@ end
 local petBarInitialized = false
 
 function Module:PET_BAR_UPDATE()
+    if InCombatLockdown() then
+        -- Skip for now; PET_BAR_UPDATE fires again later (e.g. once combat
+        -- ends and the pet bar next changes), so petBarInitialized staying
+        -- false just means we retry then instead of touching secure pet/
+        -- shapeshift bar frames mid-combat.
+        return
+    end
+
     if not petBarInitialized then
         ReplaceBlizzardActionBarFrame(self.actionBars[SHAPESHIFT_ACTION_BAR_ID])
         ReplaceBlizzardActionBarFrame(self.actionBars[PET_ACTION_BAR_ID])

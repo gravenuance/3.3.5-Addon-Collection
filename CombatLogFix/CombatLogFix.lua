@@ -1,94 +1,53 @@
---------------------------------------------------------------------------------
--- CombatLogFix (Wrath 3.3.5 style)
---------------------------------------------------------------------------------
+-- CombatLogFix (3.3.5)
+--
+-- Some private-server cores occasionally stop sending
+-- COMBAT_LOG_EVENT_UNFILTERED part-way through a fight: the combat log
+-- "hangs" and every addon relying on it (damage meters, boss mods, dot/hot
+-- trackers, etc.) goes silent until the log is reset.
+--
+-- This watches event flow while the player is in combat. If nothing has
+-- come through for STALL_THRESHOLD seconds despite active combat, it
+-- toggles LoggingCombat off/on, which forces the client to re-subscribe
+-- to the server's combat log stream and clears the stall.
 
-local CombatLogFix = {}
-CombatLogFix.__index = CombatLogFix
+local CHECK_INTERVAL  = 1  -- seconds between stall checks
+local STALL_THRESHOLD = 8  -- seconds without a CLEU event, while in combat, before treating it as hung
+local RESET_COOLDOWN  = 10 -- minimum seconds between resets
 
---------------------------------------------------------------------------------
--- Initialization
---------------------------------------------------------------------------------
+local lastEventTime = GetTime()
+local lastResetTime = 0
 
-function CombatLogFix:new(o)
-	o = o or {}
-	setmetatable(o, self)
-	return o
-end
+local fixFrame = CreateFrame("Frame", "CombatLogFixFrame", UIParent)
+fixFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+fixFrame:RegisterEvent("PLAYER_REGEN_DISABLED") -- entering combat: start the stall window fresh
 
-function CombatLogFix:Init()
-	-- Simple WoW-style addon: no Apollo here, just set up the fix frame
-	self:SetupLifestealFix()
-	self:SetupCombatLogKeepAlive()
-end
+fixFrame:SetScript("OnEvent", function()
+    lastEventTime = GetTime()
+end)
 
---------------------------------------------------------------------------------
--- Lifesteal formatting fix (from original file, adapted to WoW API if needed)
---------------------------------------------------------------------------------
+local elapsed = 0
+fixFrame:SetScript("OnUpdate", function(self, delta)
+    elapsed = elapsed + delta
+    if elapsed < CHECK_INTERVAL then
+        return
+    end
+    elapsed = 0
 
-function CombatLogFix:SetupLifestealFix()
-	-- NO-OP placeholder in WoW 3.3.5:
-	-- You can hook COMBAT_LOG_EVENT_UNFILTERED and format specific events here
-	-- if you actually have a buggy lifesteal string in your client.
-	--
-	-- This block kept as a stub so the file matches the original structure.
-end
+    if not UnitAffectingCombat("player") then
+        return
+    end
 
---------------------------------------------------------------------------------
--- Combat log keep-alive / soft reset
---------------------------------------------------------------------------------
+    local now = GetTime()
+    if now - lastEventTime < STALL_THRESHOLD then
+        return
+    end
+    if now - lastResetTime < RESET_COOLDOWN then
+        return
+    end
 
-do
-	-- Tunables
-	local CLEAR_INTERVAL   = 5 -- seconds between clears
-	local MIN_EVENTS       = 50 -- only clear if buffer looks active enough
-	local IN_INSTANCE_ONLY = true -- set false if you want it globally
-
-	-- Simple rolling counter of CLEU events
-	local eventCount       = 0
-
-	local fixFrame         = CreateFrame("Frame", "CombatLogFixFrame", UIParent)
-	fixFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-	fixFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	fixFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-
-	fixFrame:SetScript("OnEvent", function(self, event)
-		if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-			eventCount = eventCount + 1
-		else
-			-- reset counter on major transitions
-			eventCount = 0
-		end
-	end)
-
-	local acc = 0
-	fixFrame:SetScript("OnUpdate", function(self, elapsed)
-		acc = acc + elapsed
-		if acc < CLEAR_INTERVAL then
-			return
-		end
-		acc = 0
-
-		if IN_INSTANCE_ONLY then
-			local inInstance = IsInInstance()
-			if not inInstance then
-				return
-			end
-		end
-
-		-- Heuristic: if nothing at all is flowing, do nothing.
-		-- If some events are flowing, periodically clear to unstuck.
-		if eventCount >= MIN_EVENTS or eventCount == 0 then
-			CombatLogClearEntries()
-			-- after clearing, reset counter so we can see fresh flow
-			eventCount = 0
-		end
-	end)
-end
-
---------------------------------------------------------------------------------
--- Instance
---------------------------------------------------------------------------------
-
--- Create and initialize the singleton
-local CombatLogFixInst = CombatLogFix:new()
-CombatLogFixInst:Init()
+    -- Actively in combat, but nothing has come through in a while: reset the log.
+    lastResetTime = now
+    lastEventTime = now
+    LoggingCombat(false)
+    LoggingCombat(true)
+end)

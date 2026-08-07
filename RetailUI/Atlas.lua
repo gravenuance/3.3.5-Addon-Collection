@@ -530,7 +530,12 @@ local atlasTextures            = {
     },
 
     ['ExperienceBar-Background'] = {
-        asset = ExperienceBar, texcoord = { 0.00088878125, 570, 20, 29 }
+        -- left was a stray normalized fraction (~0.00089) instead of a pixel
+        -- coordinate like every sibling entry here; NormalizeTexCoord divides
+        -- all four fields by asset width/height uniformly, so this produced a
+        -- near-zero u1 instead of the intended left edge. Matches the
+        -- adjacent ExperienceBar-Border's left=1.
+        asset = ExperienceBar, texcoord = { 1, 570, 20, 29 }
     },
     ['ExperienceBar-Border'] = {
         asset = ExperienceBar, texcoord = { 1, 572, 1, 18 }

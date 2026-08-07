@@ -5,11 +5,7 @@ local _G                      = _G
 local CreateFrame             = CreateFrame
 local hooksecurefunc          = hooksecurefunc
 local SetOverrideBindingClick = SetOverrideBindingClick
-local GetBindingKey           = GetBindingKey
-local GetBindingAction        = GetBindingAction
 local InCombatLockdown        = InCombatLockdown
-local tinsert                 = table.insert
-local tremove                 = table.remove
 local ipairs                  = ipairs
 local pairs                   = pairs
 local string_match            = string.match
@@ -143,59 +139,6 @@ local function isSecureButton(btn)
 end
 
 -------------------------------------------------
--- Key ordering helpers (for display)
--------------------------------------------------
-
-local keysConfig = {}
-
-local function keyLess(lhs, rhs)
-  local lhsBase = string_gsub(lhs, "^.*%-(.+)", "%1", 1)
-  local rhsBase = string_gsub(rhs, "^.*%-(.+)", "%1", 1)
-  if lhsBase < rhsBase then return true end
-  if lhsBase > rhsBase then return false end
-
-  local lhsAlt = string_match(lhs, "ALT%-") ~= nil
-  local rhsAlt = string_match(rhs, "ALT%-") ~= nil
-  if lhsAlt ~= rhsAlt then return not lhsAlt end
-
-  local lhsCtrl = string_match(lhs, "CTRL%-") ~= nil
-  local rhsCtrl = string_match(rhs, "CTRL%-") ~= nil
-  if lhsCtrl ~= rhsCtrl then return not lhsCtrl end
-
-  local lhsShift = string_match(lhs, "SHIFT%-") ~= nil
-  local rhsShift = string_match(rhs, "SHIFT%-") ~= nil
-  if lhsShift ~= rhsShift then return not lhsShift end
-
-  return nil
-end
-
-local function insertKey(key)
-  local pos = 0
-  for i, v in ipairs(keysConfig) do
-    local less = keyLess(key, v)
-    if less == nil then
-      return nil
-    elseif less then
-      break
-    end
-    pos = i
-  end
-  pos = pos + 1
-  tinsert(keysConfig, pos, key)
-  return pos
-end
-
-local function removeKey(key)
-  for i, v in ipairs(keysConfig) do
-    if v == key then
-      tremove(keysConfig, i)
-      return i
-    end
-  end
-  return false
-end
-
--------------------------------------------------
 -- Core: accelerate a key binding
 -------------------------------------------------
 
@@ -321,16 +264,42 @@ end
 -- Binding rebuild
 -------------------------------------------------
 
+-- Base key of a possibly modifier-prefixed binding, e.g. "ALT-F1" -> "F1".
+local function baseKey(key)
+  return string_gsub(key, "^.*%-(.+)", "%1", 1)
+end
+
+-- nil = no filter (accelerate every matching binding); otherwise a set of
+-- allowed base keys, built from the "Accelerated keys" edit box.
+local keyWhitelist = nil
+
+local function rebuildKeyWhitelist()
+  local list = SnowfallKeyPressSV.keys
+  if type(list) ~= "table" or #list == 0 then
+    keyWhitelist = nil
+    return
+  end
+
+  keyWhitelist = {}
+  for _, key in ipairs(list) do
+    keyWhitelist[key:upper()] = true
+  end
+end
+
+local function isKeyAllowed(key)
+  return not keyWhitelist or keyWhitelist[baseKey(key):upper()]
+end
+
 local function updateBindings()
   if InCombatLockdown() then
     return
   end
 
-  keysConfig = {}
-
   if not SnowfallKeyPressSV.enable then
     return
   end
+
+  rebuildKeyWhitelist()
 
   local numBindings = GetNumBindings()
   local seenKeys    = {}
@@ -338,15 +307,13 @@ local function updateBindings()
   for i = 1, numBindings do
     local command, key1, key2 = GetBinding(i)
     if command and command ~= "" then
-      if key1 and key1 ~= "" and not seenKeys[key1] then
+      if key1 and key1 ~= "" and not seenKeys[key1] and isKeyAllowed(key1) then
         seenKeys[key1] = true
         accelerateKey(key1, command)
-        insertKey(key1)
       end
-      if key2 and key2 ~= "" and not seenKeys[key2] then
+      if key2 and key2 ~= "" and not seenKeys[key2] and isKeyAllowed(key2) then
         seenKeys[key2] = true
         accelerateKey(key2, command)
-        insertKey(key2)
       end
     end
   end
