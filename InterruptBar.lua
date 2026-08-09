@@ -314,10 +314,11 @@ end
 local function InterruptBar_COMBAT_LOG_EVENT_UNFILTERED(...)
     local spellID, abilityName, useSecondDuration
 
-    -- 3.3.5 CLEU args: timestamp, event, sourceGUID, sourceName, sourceFlags,
-    -- sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellId, ...
-    -- spellId is the 11th value, so 10 leading params are needed to reach it.
-    return function(_, eventtype, _, _, srcFlags, _, _, _, _, _, id)
+    -- 3.3.5 CLEU args (verified against Blizzard's shipped 3.3.5 client source,
+    -- Blizzard_CombatLog.lua): timestamp, event, sourceGUID, sourceName,
+    -- sourceFlags, destGUID, destName, destFlags, spellId, ... - no hideCaster
+    -- (added 4.1.0) and no source/destRaidFlags (added 4.2.0) in this client.
+    return function(_, eventtype, _, srcName, srcFlags, _, dstName, dstFlags, id)
         if (band(srcFlags, 0x00000040) == 0x00000040 and eventtype == "SPELL_CAST_SUCCESS") then
             spellID = id
         else
