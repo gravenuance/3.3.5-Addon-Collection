@@ -27,7 +27,7 @@ local bar
 
 local BUTTON_SIZE   = 30
 local BUTTON_SPACING = 30
-local BUTTON_START_X = -45
+local BUTTON_START_X -- computed below, once the number of tracked abilities is known
 local UPDATE_INTERVAL = 0.25
 
 -- spellID -> cooldown
@@ -73,10 +73,18 @@ do
         end
     end
 
-    for i, spellID in ipairs(order) do
+    local resolvedOrder = {}
+    for _, spellID in ipairs(order) do
         local spellName = GetSpellInfo(spellID)
-        order[i] = spellName
+        if spellName then
+            tinsert(resolvedOrder, spellName)
+        end
     end
+    order = resolvedOrder
+
+    -- Center the icon row on the bar and size the bar to match, so the
+    -- whole visible row (not just its leftmost few icons) is draggable.
+    BUTTON_START_X = -(#order - 1) * BUTTON_SPACING / 2
 end
 
 ----------------------------------------------------
@@ -186,7 +194,7 @@ end
 local function InterruptBar_CreateBar()
     bar = CreateFrame("Frame", nil, UIParent)
     bar:SetMovable(true)
-    bar:SetWidth(120)
+    bar:SetWidth(BUTTON_SPACING * #order)
     bar:SetHeight(BUTTON_SIZE)
     bar:SetClampedToScreen(true)
 
@@ -300,14 +308,16 @@ local function InterruptBar_StartTimer(ref, abilityName)
 end
 
 ----------------------------------------------------
--- Combat log handling (unchanged pattern)
+-- Combat log handling
 ----------------------------------------------------
 
 local function InterruptBar_COMBAT_LOG_EVENT_UNFILTERED(...)
     local spellID, abilityName, useSecondDuration
 
-    -- NOTE: keep this exact closure pattern and parameter list intact
-    return function(_, eventtype, _, srcName, srcFlags, _, dstName, dstFlags, id)
+    -- 3.3.5 CLEU args: timestamp, event, sourceGUID, sourceName, sourceFlags,
+    -- sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellId, ...
+    -- spellId is the 11th value, so 10 leading params are needed to reach it.
+    return function(_, eventtype, _, _, srcFlags, _, _, _, _, _, id)
         if (band(srcFlags, 0x00000040) == 0x00000040 and eventtype == "SPELL_CAST_SUCCESS") then
             spellID = id
         else
@@ -444,8 +454,8 @@ local function InterruptBar_OnLoad(self)
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 
     InterruptBarDB.scale  = InterruptBarDB.scale  or 1
-    InterruptBarDB.hidden = (InterruptBarDB.hidden ~= nil) and InterruptBarDB.hidden or false
-    InterruptBarDB.lock   = (InterruptBarDB.lock   ~= nil) and InterruptBarDB.lock   or false
+    InterruptBarDB.hidden = InterruptBarDB.hidden or false
+    InterruptBarDB.lock   = InterruptBarDB.lock   or false
 
     InterruptBar_CreateBar()
 
