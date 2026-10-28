@@ -82,31 +82,17 @@ local FramePoolMixin = CreateFromMixins(ObjectPoolMixin);
 local function FramePoolFactory(framePool)
 	return CreateFrame(framePool.frameType, nil, framePool.parent, framePool.frameTemplate);
 end
-local function ForbiddenFramePoolFactory(framePool)
-	return CreateForbiddenFrame(framePool.frameType, nil, framePool.parent, framePool.frameTemplate);
-end
+-- 3.3.5 has no forbidden frames (CreateForbiddenFrame), so `forbidden` pools create plain frames.
 function FramePoolMixin:OnLoad(frameType, parent, frameTemplate, resetterFunc, forbidden, frameInitFunc)
-	if forbidden then
-		local creationFunc = ForbiddenFramePoolFactory;
-		if frameInitFunc ~= nil then
-			creationFunc = function(framePool)
-				local frame =  CreateForbiddenFrame(framePool.frameType, nil, framePool.parent, framePool.frameTemplate);
-				frameInitFunc(frame);
-				return frame;
-			end
+	local creationFunc = FramePoolFactory;
+	if frameInitFunc ~= nil then
+		creationFunc = function(framePool)
+			local frame = CreateFrame(framePool.frameType, nil, framePool.parent, framePool.frameTemplate);
+			frameInitFunc(frame);
+			return frame;
 		end
-		ObjectPoolMixin.OnLoad(self, creationFunc, resetterFunc);
-	else
-		local creationFunc = FramePoolFactory;
-		if frameInitFunc ~= nil then
-			creationFunc = function(framePool)
-				local frame = CreateFrame(framePool.frameType, nil, framePool.parent, framePool.frameTemplate);
-				frameInitFunc(frame);
-				return frame;
-			end
-		end
-		ObjectPoolMixin.OnLoad(self, creationFunc, resetterFunc);
 	end
+	ObjectPoolMixin.OnLoad(self, creationFunc, resetterFunc);
 	self.frameType = frameType;
 	self.parent = parent;
 	self.frameTemplate = frameTemplate;
@@ -213,7 +199,26 @@ end
 -- If different frames are used for specialized cases even though they have the same template,
 -- supply a specialization key to differentiate. If specialization is a function, it will be
 -- called the first time a frame is acquired. If specialization is a table, it will be mixed
--- in with FrameUtil.SpecializeFrameWithMixins.
+-- in with SpecializeFrameWithMixins.
+
+-- Retail's FrameUtil.SpecializeFrameWithMixins, which 3.3.5 lacks: mix in, wire the standard
+-- script handlers the mixins define, then run their OnLoad.
+local STANDARD_SCRIPT_HANDLERS = {
+	"OnShow", "OnHide", "OnEvent", "OnEnter", "OnLeave", "OnClick", "OnDragStart", "OnReceiveDrag",
+};
+local function SpecializeFrameWithMixins(frame, ...)
+	Mixin(frame, ...);
+	for _, scriptName in ipairs(STANDARD_SCRIPT_HANDLERS) do
+		local script = frame[scriptName];
+		if script and frame:HasScript(scriptName) then
+			frame:SetScript(scriptName, script);
+		end
+	end
+	if frame.OnLoad then
+		frame:OnLoad();
+	end
+end
+
 local function FramePoolCollection_GetPoolKey(template, specialization)
 	return template..tostring(specialization);
 end
@@ -223,7 +228,7 @@ local function FramePoolCollection_GetSpecializedFrameInit(specialization)
 		return specialization;
 	elseif specializationType == "table" then
 		local function SpecializationFrameInit(frame)
-			FrameUtil.SpecializeFrameWithMixins(frame, specialization);
+			SpecializeFrameWithMixins(frame, specialization);
 		end
 		return SpecializationFrameInit;
 	end
