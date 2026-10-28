@@ -2125,15 +2125,15 @@ function lib:UIDropDownMenu_SetButtonClickable(level, id)
 end
 
 
-function lib:UIDropDownMenu_DisableDropDown(dropDown)
-	lib:UIDropDownMenu_SetDropDownEnabled(dropDown, false, disabledtooltip);
+function lib:UIDropDownMenu_DisableDropDown(dropDown, disabledTooltip)
+	lib:UIDropDownMenu_SetDropDownEnabled(dropDown, false, disabledTooltip);
 end
 
 function lib:UIDropDownMenu_EnableDropDown(dropDown)
 	lib:UIDropDownMenu_SetDropDownEnabled(dropDown, true);
 end
 
-function lib:UIDropDownMenu_SetDropDownEnabled(dropDown, enabled, disabledtooltip)
+function lib:UIDropDownMenu_SetDropDownEnabled(dropDown, enabled, disabledTooltip)
 	local dropDownName = dropDown:GetName();
 	local label = GetChild(dropDown, dropDownName, "Label");
 	if label then
@@ -2172,7 +2172,8 @@ function lib:UIDropDownMenu_SetDropDownEnabled(dropDown, enabled, disabledtoolti
 				button:SetMotionScriptsWhileDisabled(true);
 				button:SetScript("OnEnter", function()
 					GameTooltip:SetOwner(button, "ANCHOR_RIGHT");
-					GameTooltip_AddErrorLine(GameTooltip, disabledTooltip);
+					-- 3.3.5 has no GameTooltip_AddErrorLine.
+					GameTooltip:AddLine(disabledTooltip, RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b, true);
 					GameTooltip:Show();
 				end);
 
