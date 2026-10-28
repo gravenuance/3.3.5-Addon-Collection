@@ -1265,10 +1265,12 @@ local function ConfigureHeader(header)
 
     function header:UnitButtonCreated(index)
         local children = { header:GetChildren() }
+        -- the 3.3.5 fallback can't pass the index; the button just created is the newest child
+        index = index or #children
         local frame = children[index]
 
         if not frame then
-            fsLog:Error("Failed to find unit button " .. index)
+            fsLog:Error("Failed to find unit button " .. tostring(index))
             return
         end
 
