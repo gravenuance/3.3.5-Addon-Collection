@@ -88,8 +88,6 @@ local function OnUpdate(self, elapsed)
         end
     end
 
-    numChildren = currentNumChildren
-
     -- Sort nameplates by depth
     table.sort(nameplates, NameplateDepthSort)
 
