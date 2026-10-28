@@ -71,7 +71,7 @@ end
 -- frame:SetPosition({ parent=frame, attachAt="TOPLEFT", attachTo="TOPRIGHT", left=0, top=0 })
 function FrameHelpers:SetPosition(position)             
     
-    parent = type(position.parent) == "string" and getglobal(position.parent) or position.parent
+    local parent = type(position.parent) == "string" and getglobal(position.parent) or position.parent
     
 	self:ClearAllPoints()
 	self:SetPoint(position.attachAt or "TOPLEFT", parent, position.attachTo or "BOTTOMLEFT", position.left or 0, position.top or 0)
@@ -314,27 +314,12 @@ function OneFrame:CreateKeyringButton(parent)
     end)                                                    
     
 	button:SetID(KEYRING_CONTAINER)
-	button:RegisterForClicks("LeftButtonUp", "RightButtonUp") 
-	
-    function createTexture(path, mode, left, right, top, bottom)
-        local texture = button:CreateTexture(path, "OVERLAY")
-        texture:SetTexture(path)
-        texture:SetTexCoord(left, right, top, bottom) 
-        
-        if mode then
-            texture:SetBlendMode(mode)
-        end
-        
-        return texture
-    end
-	                        
+	button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
 	button:SetNormalTexture([[Interface\Buttons\UI-Button-KeyRing]])
 	button:SetHighlightTexture([[Interface\Buttons\UI-Button-KeyRing-Highlight]])
 	button:SetPushedTexture([[Interface\Buttons\UI-Button-KeyRing-Down]])
---	button:SetNormalTexture(createTexture([[Interface\Buttons\UI-Button-KeyRing]], nil, 0, 0.5625, 0, 0.609375))
---	button:SetHighlightTexture(createTexture([], "ADD", 0, 0.5625, 0, 0.609375))
---	button:SetPushedTexture(createTexture([[Interface\Buttons\UI-Button-KeyRing-Down]], nil, 0, 0.5625, 0, 0.609375))	                                                                                                            
-	
+
 	return button
 end         
 

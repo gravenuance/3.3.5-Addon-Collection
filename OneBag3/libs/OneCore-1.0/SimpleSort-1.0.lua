@@ -158,7 +158,8 @@ end
 
 function SimpleSort:GetSlotOrder()
     local slots = {}
- 
+    local start, stop, step
+
     if self.db.profile.behavior.bagorder == 2 then
         start, stop, step = #self.pluginFor.bagIndexes, 1, -1
     else
@@ -166,7 +167,7 @@ function SimpleSort:GetSlotOrder()
     end
 
     for i=start, stop, step do
-        bagid = self.pluginFor.bagIndexes[i]
+        local bagid = self.pluginFor.bagIndexes[i]
 
         for slotid = 1, self.pluginFor.frame.bags[bagid].size do
             table.insert(slots,  self.pluginFor.frame.slots[('%s:%s'):format(bagid, slotid)])

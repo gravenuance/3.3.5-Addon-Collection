@@ -163,7 +163,7 @@ function OneCore:BuildFrame()
 		end
 		
 		for slot = 1, size do
-			slotkey = ('%s:%s'):format(bag, slot)
+			local slotkey = ('%s:%s'):format(bag, slot)
 			if not self.frame.slots[slotkey] then
 				self.frame.slots[slotkey] = self:CreateSlotFrame(self.frame.bags[bag], slot)
 				self.frame.slots[slotkey]:SetFrameStrata(self.stratas[self.db.profile.behavior.strata])
@@ -256,7 +256,7 @@ end
 -- @param bag the bag's numeric id
 -- @param slot the slot's numeric id
 function OneCore:GetSlot(bag, slot)
-	key = ('%s:%s'):format(bag, slot)
+	local key = ('%s:%s'):format(bag, slot)
 	return self.frame.slots[key]
 end                         
 

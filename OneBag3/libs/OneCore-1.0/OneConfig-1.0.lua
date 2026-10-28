@@ -47,7 +47,7 @@ function OneConfig:InitializeConfiguration()
 
 	self.configs = {}
 
-	function GetBaseConfig()
+	local function GetBaseConfig()
 		return {
 			type = "group",
 			name = self.displayName,
@@ -488,7 +488,7 @@ function OneConfig:InitializeConfiguration()
 		}
 	end
 
-	baseconfig = GetBaseConfig()
+	local baseconfig = GetBaseConfig()
     local pluginGroupCount = 1
 	for typeName, _ in self:IteratePluginTypes() do
 	    local values = {}

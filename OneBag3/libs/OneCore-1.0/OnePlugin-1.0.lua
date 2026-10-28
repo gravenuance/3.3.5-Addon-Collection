@@ -11,6 +11,7 @@ if not OnePlugin then return end -- No Upgrade needed.
 	 xpcall safecall implementation
 ]]
 local xpcall = xpcall
+local tconcat = table.concat
 
 local function errorhandler(err)
 	return geterrorhandler()(err)
