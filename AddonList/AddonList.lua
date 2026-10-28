@@ -192,7 +192,7 @@ function AddonList_Update()
 	local characterName = UnitName("player");
 	local name, title, notes, enabled, loadable, reason, security;
 	local entryName = "AddonListEntry";
-	local addonIndex, entry, obj;
+	local addonIndex, entryID, entry, obj;
 
 	for i=1, MAX_ADDONS_DISPLAYED do
 		addonIndex = AddonList.offset + i;
@@ -472,7 +472,7 @@ function AddonTooltip_Update(owner)
 	GameTooltip:ClearLines();
 
 	if ( security == "BANNED" ) then
-		GameTooltip:SetText(ADDON_BANNED_TOOLTIP);
+		GameTooltip:SetText(ADDON_BANNED);
 	else
 		if ( title ) then
 			GameTooltip:AddLine(title);
