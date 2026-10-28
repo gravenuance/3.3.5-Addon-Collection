@@ -5,6 +5,9 @@ local tostring = tostring
 local type = type
 local CreateFromMixins = CreateFromMixins
 
+-- Empty iterator for pools that don't exist yet; 3.3.5 has no global nop.
+local function nop() end
+
 local ObjectPoolMixin = {};
 
 function ObjectPoolMixin:OnLoad(creationFunc, resetterFunc)

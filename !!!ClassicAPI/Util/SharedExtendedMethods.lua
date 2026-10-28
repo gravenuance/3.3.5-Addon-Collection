@@ -258,7 +258,7 @@ end
 
 local function Method_SetFromAlpha(Self, normalizedAlpha)
 	if ( Self.___ToAlpha ) then
-		self:SetChange(Self.___ToAlpha - normalizedAlpha)
+		Self:SetChange(Self.___ToAlpha - normalizedAlpha)
 		Self.___ToAlpha = nil
 	else
 		Self.___FromAlpha = normalizedAlpha
