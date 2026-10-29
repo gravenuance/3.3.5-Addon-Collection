@@ -640,6 +640,27 @@ end)
 -- Aura duration / timer
 -------------------------------------------------
 
+local function HideAuraFrame(self)
+    self.timeLeft = nil
+    self:SetScript("OnUpdate", nil)
+    if self.duration then
+        self.duration:Hide()
+    end
+    if self.cooldown then
+        self.cooldown:Clear()
+        self.cooldown:Hide()
+    end
+    self:Hide()
+end
+
+-- An aura of unknown duration shows its icon only and hides itself when its estimate runs out.
+local function AuraFrame_OnUpdateNoTimer(self, elapsed)
+    self.timeLeft = self.timeLeft - elapsed
+    if self.timeLeft <= 0 then
+        HideAuraFrame(self)
+    end
+end
+
 local function AuraFrame_OnUpdate(self, elapsed)
     local durationFS = self.duration
 
@@ -667,14 +688,7 @@ local function AuraFrame_OnUpdate(self, elapsed)
 
         durationFS:Show()
     else
-        self.timeLeft = nil
-        self:SetScript("OnUpdate", nil)
-        durationFS:Hide()
-        if self.cooldown then
-            self.cooldown:Clear()
-            self.cooldown:Hide()
-        end
-        self:Hide()
+        HideAuraFrame(self)
     end
 end
 
@@ -696,10 +710,17 @@ local function ConfigureAuraFrame(frame, spellID, duration, expirationTime, aura
     frame.timeLeft = nil
     frame:SetScript("OnUpdate", nil)
 
-    AuraFrame_SetTimer(frame, expirationTime)
-
-    if frame.duration then
-        frame.duration:Show()
+    if duration > 0 then
+        AuraFrame_SetTimer(frame, expirationTime)
+        if frame.duration then
+            frame.duration:Show()
+        end
+    else
+        if frame.duration then
+            frame.duration:Hide()
+        end
+        frame.timeLeft = expirationTime - GetTime()
+        frame:SetScript("OnUpdate", AuraFrame_OnUpdateNoTimer)
     end
 
     local color
@@ -726,41 +747,8 @@ local function LayoutAuraFrame(frame, index, offset, container)
     return offset + frame:GetWidth()
 end
 
-local function CollectSorted(guid, auraType)
-    local collected = {}
-    local idx = 1
-    local emptyHits = 0
-    local MAX_EMPTY = 20
-
-    while emptyHits < MAX_EMPTY do
-        local spellID, duration, expirationTime, auraTypeKey, dispelType =
-            addon.Auras:Get(guid, auraType, idx)
-
-        if spellID and duration and duration > 0 and expirationTime then
-            collected[#collected + 1] = {
-                spellID        = spellID,
-                duration       = duration,
-                expirationTime = expirationTime,
-                auraTypeKey    = auraTypeKey,
-                dispelType     = dispelType,
-            }
-        end
-
-        if spellID then
-            emptyHits = 0 -- reset on a hit
-        else
-            emptyHits = emptyHits + 1
-        end
-
-        idx = idx + 1
-    end
-
-    table.sort(collected, function(a, b)
-        return a.duration > b.duration
-    end)
-
-    return collected
-end
+-- Reused by every row: a row is laid out before the next one is collected.
+local collectedAuras = {}
 
 local function LayoutRow(frames, collected, container)
     local offset = 0
@@ -776,7 +764,7 @@ local function LayoutRow(frames, collected, container)
             aura.spellID,
             aura.duration,
             aura.expirationTime,
-            aura.auraTypeKey,
+            aura.auraType,
             aura.dispelType
         )
 
@@ -785,16 +773,7 @@ local function LayoutRow(frames, collected, container)
     end
 
     for i = frameIndex, #frames do
-        frames[i].timeLeft = nil
-        frames[i]:SetScript("OnUpdate", nil)
-        frames[i]:Hide()
-        if frames[i].duration then
-            frames[i].duration:Hide()
-        end
-        if frames[i].cooldown then
-            frames[i].cooldown:Clear()
-            frames[i].cooldown:Hide()
-        end
+        HideAuraFrame(frames[i])
     end
 
     container:SetWidth(offset)
@@ -821,14 +800,11 @@ function Nameplate:UpdateAuras(nameplate)
         return
     end
 
-    local debuffs = CollectSorted(guid, "DEBUFF")
-    local buffs   = CollectSorted(guid, "BUFF")
-
     if nameplate.debuffFrames then
-        LayoutRow(nameplate.debuffFrames, debuffs, nameplate.debuffs)
+        LayoutRow(nameplate.debuffFrames, addon.Auras:Collect(guid, "DEBUFF", collectedAuras), nameplate.debuffs)
     end
     if nameplate.buffFrames then
-        LayoutRow(nameplate.buffFrames, buffs, nameplate.buffs)
+        LayoutRow(nameplate.buffFrames, addon.Auras:Collect(guid, "BUFF", collectedAuras), nameplate.buffs)
     end
 end
 

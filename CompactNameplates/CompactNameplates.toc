@@ -3,6 +3,7 @@
 ## Notes: Custom nameplates inspired by Blizzard's CompactRaidFrames
 ## Author: Jake
 ## Version: 0.1
+## SavedVariables: CompactNameplatesDB
 
 Libs\LibStub\LibStub.lua
 Libs\LibDRTracker-1.0\LibDRTracker-1.0.lua
