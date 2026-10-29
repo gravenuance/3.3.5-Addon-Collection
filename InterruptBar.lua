@@ -143,6 +143,7 @@ local function InterruptBar_AddIcons()
             btn.text     = text
             btn.duration = info.duration
             btn.cd       = cd
+            btn.homeX    = x
 
             bar[abilityName] = btn
             x = x + BUTTON_SPACING
@@ -160,6 +161,7 @@ local function InterruptBar_SavePosition()
 end
 
 local function InterruptBar_LoadPosition()
+    bar:ClearAllPoints()
     if InterruptBarDB.Position then
         bar:SetPoint(
             InterruptBarDB.Position.point,
@@ -179,12 +181,18 @@ local function InterruptBar_UpdateBar()
     if InterruptBarDB.hidden then
         for _, abilityName in ipairs(order) do
             local btn = bar[abilityName]
-            if btn then btn:Hide() end
+            if btn then
+                if activetimers[abilityName] then btn:Show() else btn:Hide() end
+            end
         end
+        ReanchorActiveTimers()
     else
         for _, abilityName in ipairs(order) do
             local btn = bar[abilityName]
-            if btn then btn:Show() end
+            if btn then
+                btn:Show()
+                btn:SetPoint("CENTER", bar, "CENTER", btn.homeX, 0)
+            end
         end
     end
 
