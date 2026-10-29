@@ -9,5 +9,6 @@ CompactNameplates.lua
 Settings.lua
 Nameplate.lua
 Units.lua
+ClassIntel.lua
 Auras.lua
 ComboPoints.lua

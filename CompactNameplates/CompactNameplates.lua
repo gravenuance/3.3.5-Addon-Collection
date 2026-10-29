@@ -108,6 +108,8 @@ local function OnUpdate(self, elapsed)
         sortElapsed = SORT_INTERVAL -- lay out new plates right away
     end
 
+    addon.ClassIntel:Tick(elapsed)
+
     sortElapsed = sortElapsed + elapsed
     if sortElapsed < SORT_INTERVAL then return end
     sortElapsed = 0
@@ -174,7 +176,16 @@ RegisterEvent("ADDON_LOADED", function(self, name)
     end
 end)
 
+RegisterEvent("PLAYER_ENTERING_WORLD", function()
+    addon.ClassIntel:OnEnteringWorld()
+end)
+
+RegisterEvent("UPDATE_BATTLEFIELD_SCORE", function()
+    addon.ClassIntel:OnScoreUpdate()
+end)
+
 RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(self, ...)
+    addon.ClassIntel:OnCombatEvent(...)
     local subevent = select(2, ...)
     if subevent == "SPELL_AURA_APPLIED" then
         addon.Auras:OnApply(...)
