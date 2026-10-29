@@ -17,6 +17,7 @@ local SecureCall = securecall
 local GetMapInfo = GetMapInfo
 local Reverse = string.reverse
 local GetRealmName = GetRealmName
+local GetErrorHandler = geterrorhandler
 local GetAddOnInfo = GetAddOnInfo
 local IsAddOnLoaded = IsAddOnLoaded
 local GetInstanceInfo = GetInstanceInfo
@@ -26,35 +27,38 @@ local FIRST_NUMBER_CAP = FIRST_NUMBER_CAP
 local SECOND_NUMBER_CAP = SECOND_NUMBER_CAP
 local LARGE_NUMBER_SEPERATOR = LARGE_NUMBER_SEPERATOR
 
-function AnimateTexCoords(Self, Width, Height, FrameW, FrameH, NumFrames, Elapsed, Throt)
-	local Throt = Throt or Self.throttle or 0.1
+-- 3.3.5 ships AnimateTexCoords; replacing a Blizzard global taints its secure callers.
+if ( not AnimateTexCoords ) then
+	function AnimateTexCoords(Self, Width, Height, FrameW, FrameH, NumFrames, Elapsed, Throt)
+		local Throt = Throt or Self.throttle or 0.1
 
-	if ( not Self.frame ) then
-		Self.frame = 1
-		Self.Throt = Throt
-		Self.numColumns = Floor(Width / FrameW)
-		Self.numRows = Floor(Height / FrameH)
-		Self.columnWidth = FrameW / Width
-		Self.rowHeight = FrameH / Height
-	end
-
-	if ( not Self.Throt or Self.Throt > Throt ) then
-		local Frame = Self.frame
-		local FramesToAdvance = Floor(Self.Throt / Throt)
-		while Frame + FramesToAdvance > NumFrames do
-			Frame = Frame - NumFrames
+		if ( not Self.frame ) then
+			Self.frame = 1
+			Self.Throt = Throt
+			Self.numColumns = Floor(Width / FrameW)
+			Self.numRows = Floor(Height / FrameH)
+			Self.columnWidth = FrameW / Width
+			Self.rowHeight = FrameH / Height
 		end
 
-		Frame = Frame + FramesToAdvance
-		Self.Throt = 0
-		local SetLeft = Mod(Frame - 1, Self.numColumns) * Self.columnWidth
-		local SetRight = SetLeft + Self.columnWidth
-		local SetBottom = Ceil(Frame / Self.numColumns) * Self.rowHeight
-		local SetTop = SetBottom - Self.rowHeight
-		Self:SetTexCoord(SetLeft, SetRight, SetTop, SetBottom)
-		Self.frame = Frame
-	else
-		Self.Throt = Self.Throt + Elapsed
+		if ( not Self.Throt or Self.Throt > Throt ) then
+			local Frame = Self.frame
+			local FramesToAdvance = Floor(Self.Throt / Throt)
+			while Frame + FramesToAdvance > NumFrames do
+				Frame = Frame - NumFrames
+			end
+
+			Frame = Frame + FramesToAdvance
+			Self.Throt = 0
+			local SetLeft = Mod(Frame - 1, Self.numColumns) * Self.columnWidth
+			local SetRight = SetLeft + Self.columnWidth
+			local SetBottom = Ceil(Frame / Self.numColumns) * Self.rowHeight
+			local SetTop = SetBottom - Self.rowHeight
+			Self:SetTexCoord(SetLeft, SetRight, SetTop, SetBottom)
+			Self.frame = Frame
+		else
+			Self.Throt = Self.Throt + Elapsed
+		end
 	end
 end
 
@@ -73,7 +77,10 @@ end
 local function secureexecutenext(Table, Prev, Func, ...)
 	local Key, Value = Next(Table, Prev)
 	if ( Key ~= nil ) then
-		PCall(Func, Key, Value, ...)  -- Errors are silently discarded!
+		local OK, Err = PCall(Func, Key, Value, ...)
+		if ( not OK ) then
+			GetErrorHandler()(Err)
+		end
 	end
 	return Key
 end
