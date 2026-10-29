@@ -52,7 +52,7 @@ do
 
         local index = 1;
         while not maxCount or index <= maxCount do
-            local name, rank, icon, count, auraType, duration, expire, caster, steal, consolidate, id = UnitAura(unit, index, filter);
+            local name, _, icon, count, auraType, duration, expire, caster, steal, consolidate, id = UnitAura(unit, index, filter);
             if not name then
                 break;
             end

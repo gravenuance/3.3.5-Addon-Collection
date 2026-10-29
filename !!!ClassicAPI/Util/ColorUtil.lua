@@ -55,5 +55,6 @@ end
 
 function GetFactionColor(factionGroupTag)
 	-- PLAYER_FACTION_COLORS does not exist on 3.3.5.
-	return PLAYER_FACTION_COLORS and PLAYER_FACTION_COLORS[PLAYER_FACTION_GROUP[factionGroupTag]];
+	local colors = _G.PLAYER_FACTION_COLORS;
+	return colors and colors[PLAYER_FACTION_GROUP[factionGroupTag]];
 end

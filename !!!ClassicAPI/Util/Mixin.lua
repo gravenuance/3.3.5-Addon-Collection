@@ -25,10 +25,10 @@ function CreateAndInitFromMixin(mixin, ...)
 end
 
 -- Retail's GenerateClosure: binds leading arguments, call-time arguments follow them.
-if ( not GenerateClosure ) then
+if ( not _G.GenerateClosure ) then
 	local unpack = unpack
 
-	function GenerateClosure(f, ...)
+	_G.GenerateClosure = function(f, ...)
 		local bound = select("#", ...)
 		if ( bound == 0 ) then
 			return f

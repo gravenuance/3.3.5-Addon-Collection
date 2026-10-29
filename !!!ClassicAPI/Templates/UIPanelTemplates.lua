@@ -53,8 +53,8 @@ function BagSearch_OnTextChanged(self, userChanged)
 	if ( text == SEARCH ) then
 		text = "";
 	end
-	if ( SetItemSearch ) then -- Not present on 3.3.5.
-		SetItemSearch(text);
+	if ( _G.SetItemSearch ) then -- Not present on 3.3.5.
+		_G.SetItemSearch(text);
 	end
 	if (text ~= "") then
 		self.clearButton:Show();
