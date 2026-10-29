@@ -58,6 +58,8 @@ end
 
 local function OnRaidContainerSizeChanged()
     RequestUpdateContainers()
+    -- the resize relaid the frames in Blizzard order
+    RequestSort()
 end
 
 local function OnCvarUpdate(_, _, name)
@@ -134,6 +136,11 @@ function M:Init()
     if CompactRaidFrameContainer_OnSizeChanged then
         -- classic uses the container size to determine frames per line
         wow.hooksecurefunc("CompactRaidFrameContainer_OnSizeChanged", OnRaidContainerSizeChanged)
+    end
+
+    if CompactRaidFrameContainer_LayoutFrames then
+        -- filter, sort mode and profile changes relayout the container and undo our positions
+        wow.hooksecurefunc("CompactRaidFrameContainer_LayoutFrames", RequestSort)
     end
 end
 
@@ -231,7 +238,9 @@ function M:Containers()
             local horizontal = raid:IsHorizontalLayout()
             local lineSize = nil
 
-            if wow.IsRetail() then
+            -- on 3.3.5 the container belongs to the CompactRaidFrame addon, so the cata taint issue below
+            -- doesn't apply, and the workaround would leak a new secure frame on every sort
+            if wow.IsRetail() or wow.IsWotlkPrivate() then
                 lineSize = horizontal and wow.CompactRaidFrameContainer:GetWidth() or wow.CompactRaidFrameContainer:GetHeight()
             else
                 -- cata has an annoying taint issue that we have to workaround
