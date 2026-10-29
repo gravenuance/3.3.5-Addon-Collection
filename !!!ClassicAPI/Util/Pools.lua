@@ -134,10 +134,12 @@ end
 
 local MaskPoolMixin = CreateFromMixins(ObjectPoolMixin);
 local function MaskPoolFactory(maskPool)
-	if not maskPool.parent.CreateMaskTexture then
-		error("MaskPool: CreateMaskTexture is not available on this client.", 0);
+	-- 3.3.5 only has a CreateMaskTexture stub that returns nothing.
+	local mask = maskPool.parent:CreateMaskTexture(nil, maskPool.layer, maskPool.maskTemplate, maskPool.subLayer);
+	if not mask then
+		error("MaskPool: mask textures are not available on this client.", 0);
 	end
-	return maskPool.parent:CreateMaskTexture(nil, maskPool.layer, maskPool.maskTemplate, maskPool.subLayer);
+	return mask;
 end
 function MaskPoolMixin:OnLoad(parent, layer, subLayer, maskTemplate, resetterFunc)
 	ObjectPoolMixin.OnLoad(self, MaskPoolFactory, resetterFunc);
