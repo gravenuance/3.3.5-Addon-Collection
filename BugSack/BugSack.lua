@@ -375,22 +375,21 @@ function BugSack:Taint(addon)
 	end
 end
 
-do
-	local errors = {}
-	function BugSack:GetErrors(sessionId)
-		-- XXX I've never liked this function, maybe a BugGrabber redesign is in order, where we have one subtable in the DB per session ID.
-		if sessionId then
-			wipe(errors)
-			local db = BugGrabber:GetDB()
-			for i, e in next, db do
-				if sessionId == e.session then
-					errors[#errors + 1] = e
-				end
+function BugSack:GetErrors(sessionId)
+	-- XXX I've never liked this function, maybe a BugGrabber redesign is in order, where we have one subtable in the DB per session ID.
+	if sessionId then
+		-- A fresh table per call: callers keep the result (the sack's current
+		-- contents), so a shared table would be wiped by the next query.
+		local errors = {}
+		local db = BugGrabber:GetDB()
+		for i, e in next, db do
+			if sessionId == e.session then
+				errors[#errors + 1] = e
 			end
-			return errors
-		else
-			return BugGrabber:GetDB()
 		end
+		return errors
+	else
+		return BugGrabber:GetDB()
 	end
 end
 
@@ -515,6 +514,42 @@ function BugSack:SendBugsToUser(player, session)
 	print(L["%d bugs have been sent to %s. He must have BugSack to be able to examine them."]:format(#errors, player))
 end
 
+-- The payload comes from another player, so rebuild each entry from the fields
+-- we use, with the types the sack and the SavedVariables expect (a message
+-- chunk over 980 characters crashes the client when it is saved).
+local MAX_MESSAGE_CHUNK = 980
+local MAX_MESSAGE_CHUNKS = 6
+local function sanitizeReceivedBug(err, sender, session)
+	if type(err) ~= "table" then return nil end
+
+	local message = err.message
+	if type(message) == "string" then
+		message = message:sub(1, MAX_MESSAGE_CHUNK)
+	elseif type(message) == "table" then
+		local chunks = {}
+		for i = 1, math.min(#message, MAX_MESSAGE_CHUNKS) do
+			if type(message[i]) ~= "string" then return nil end
+			chunks[i] = message[i]:sub(1, MAX_MESSAGE_CHUNK)
+		end
+		if #chunks == 0 then return nil end
+		message = chunks
+	else
+		return nil
+	end
+
+	local counter = err.counter
+	if type(counter) ~= "number" or counter < 1 then counter = 1 end
+
+	return {
+		message = message,
+		counter = counter,
+		type = type(err.type) == "string" and err.type or "error",
+		time = type(err.time) == "string" and err.time or "?",
+		source = sender,
+		session = session,
+	}
+end
+
 function BugSack:OnBugComm(prefix, message, distribution, sender)
 	if prefix ~= "BugSack" or not self.Deserialize then return end
 
@@ -523,19 +558,20 @@ function BugSack:OnBugComm(prefix, message, distribution, sender)
 		print("Failure to deserialize incoming data from " .. sender .. ".")
 		return
 	end
+	if type(deSz) ~= "table" then return end
 
 	-- Store recieved errors in the current session database with a source set to the sender
 	local s = BugGrabber:GetSessionId()
+	local received = 0
 	for i, err in next, deSz do
-		err.source = sender
-		err.session = s
-		BugGrabber:StoreError(err)
+		local clean = sanitizeReceivedBug(err, sender, s)
+		if clean then
+			BugGrabber:StoreError(clean)
+			received = received + 1
+		end
 	end
 
-	print(L["You've received %d bugs from %s."]:format(#deSz, sender))
-
-	wipe(deSz)
-	deSz = nil
+	print(L["You've received %d bugs from %s."]:format(received, sender))
 end
 
 BugSack:SetScript("OnEvent", function(self, event, addon)
