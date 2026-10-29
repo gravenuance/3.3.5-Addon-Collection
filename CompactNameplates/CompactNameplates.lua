@@ -180,7 +180,12 @@ end)
 
 RegisterEvent("PLAYER_ENTERING_WORLD", function()
     addon.ClassIntel:OnEnteringWorld()
+    addon.MarkIntel:OnEnteringWorld()
     addon.Auras:OnEnteringWorld()
+end)
+
+RegisterEvent("RAID_TARGET_UPDATE", function()
+    addon.MarkIntel:ScanTokens(addon.Nameplate:GetUnitCandidates())
 end)
 
 RegisterEvent("UPDATE_BATTLEFIELD_SCORE", function()
@@ -189,6 +194,7 @@ end)
 
 RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(self, ...)
     addon.ClassIntel:OnCombatEvent(...)
+    addon.MarkIntel:OnCombatEvent(...)
     local subevent = select(2, ...)
     if subevent == "SPELL_AURA_APPLIED" then
         addon.Auras:OnApply(...)
