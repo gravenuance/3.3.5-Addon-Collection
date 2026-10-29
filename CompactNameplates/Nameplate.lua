@@ -376,6 +376,18 @@ end
 -- Class color, GUID updates
 -------------------------------------------------
 
+-- Shares a class found through a unit token with plates that never get one.
+local function NoteUnitClass(unitID, guid, class)
+    if not class or not UnitIsPlayer(unitID) or addon.ClassIntel:ClassForGUID(guid) then
+        return
+    end
+    local name, realm = UnitName(unitID)
+    if name and realm and realm ~= "" then
+        name = name .. "-" .. realm
+    end
+    addon.ClassIntel:Note(guid, name, class)
+end
+
 local function ResolveGUID(nameplate)
     local myGUID = nameplate.unitGUID
     if not myGUID then
@@ -389,6 +401,7 @@ local function ResolveGUID(nameplate)
             if guid and guid == myGUID then
                 local _, class = UnitClass(unit)
                 addon.Units:SetGUID(guid, nil, nil, class)
+                NoteUnitClass(unit, guid, class)
                 return class
             end
         end
@@ -398,8 +411,11 @@ local function ResolveGUID(nameplate)
 end
 
 local function SetClassColor(nameplate)
-    local info  = nameplate.unitGUID and addon.Units:Get(nameplate.unitGUID)
+    local guid  = nameplate.unitGUID
+    local info  = guid and addon.Units:Get(guid)
     local class = info and info.class
+        or addon.ClassIntel:ClassForGUID(guid)
+        or addon.ClassIntel:ClassForName(Nameplate:GetPlateName(nameplate))
 
     if not class then
         -- NPCs never get a class, so don't rescan every candidate each frame
@@ -833,6 +849,7 @@ local function ResolveInitialUnit(nameplate)
                 local maxHealth = UnitHealthMax(unitID) or 0
                 SetGUID(nameplate, guid)
                 addon.Units:SetGUID(guid, unitName, maxHealth, class)
+                NoteUnitClass(unitID, guid, class)
                 return unitID
             end
         end
@@ -864,6 +881,11 @@ local function ResolveOrFallbackGUID(nameplate)
 
     if not unitGUID then
         unitGUID = Nameplate:GetGUIDByNameAndHealthFromPlate(nameplate)
+    end
+
+    -- A player seen only in the combat log has no token but still has one GUID.
+    if not unitGUID then
+        unitGUID = addon.ClassIntel:GUIDForName(Nameplate:GetPlateName(nameplate))
     end
 
     if unitGUID then
