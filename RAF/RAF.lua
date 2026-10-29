@@ -2,7 +2,7 @@ local addonName, RAF         = ...
 
 RAF                          = RAF or {}
 _G[addonName]                = RAF
-local FONT_PATH_BOLD         = "Interface\\AddOns\\CompactNameplates\\Media\\font-bold.ttf"
+local FONT_PATH_BOLD         = "Interface\\AddOns\\" .. addonName .. "\\Media\\font-bold.ttf"
 local FONT_FLAG              = "OUTLINE"
 -------------------------------------------------------
 -- Saved variables
@@ -157,6 +157,13 @@ local function GetDefaultTrinketIconForUnit(unit)
         else
             return "Interface\\Icons\\INV_Jewelry_TrinketPVP_01"
         end
+    end
+end
+
+-- SetFont fails (returns nil) when the file is missing; fall back to the client font so SetText never errors.
+local function ApplyFont(fontString, size)
+    if not fontString:SetFont(FONT_PATH_BOLD, size, FONT_FLAG) then
+        fontString:SetFont(STANDARD_TEXT_FONT, size, FONT_FLAG)
     end
 end
 
@@ -386,7 +393,7 @@ local function CreateArenaFrame(parent, index, unit)
     label:SetTextColor(1, 1, 1)
 
     local font, size, flags = label:GetFont()
-    label:SetFont(FONT_PATH_BOLD, size * 1.4, FONT_FLAG)
+    ApplyFont(label, size * 1.4)
 
     f.labelFrame     = labelFrame
     f.label          = label
@@ -433,7 +440,7 @@ local function CreateArenaFrame(parent, index, unit)
 
     local tDur = tTextFrame:CreateFontString(nil, "OVERLAY")
     tDur:SetPoint("CENTER", tTextFrame, "CENTER", 0, 0)
-    tDur:SetFont(FONT_PATH_BOLD, 14, FONT_FLAG)
+    ApplyFont(tDur, 14)
     tDur:SetText("")
 
     trinket.durationText = tDur
@@ -470,7 +477,7 @@ local function CreateArenaFrame(parent, index, unit)
 
     local sDur = sTextFrame:CreateFontString(nil, "OVERLAY")
     sDur:SetPoint("CENTER", sTextFrame, "CENTER", 0, 0)
-    sDur:SetFont(FONT_PATH_BOLD, 14, FONT_FLAG)
+    ApplyFont(sDur, 14)
     sDur:SetText("")
 
     spellsIcon.durationText = sDur
@@ -514,7 +521,7 @@ local function CreateArenaFrame(parent, index, unit)
 
         local dtext = textFrame:CreateFontString(nil, "OVERLAY")
         dtext:SetPoint("CENTER", textFrame, "CENTER", 0, 0)
-        dtext:SetFont(FONT_PATH_BOLD, 14, FONT_FLAG)
+        ApplyFont(dtext, 14)
         dtext:SetText("")
 
         btn.durationText = dtext
