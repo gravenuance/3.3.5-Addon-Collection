@@ -153,20 +153,45 @@ end
 
 local nameplatesByGUID = {}
 
-local function SetGUID(nameplate, unitGUID)
-    if not unitGUID then return end
-    nameplatesByGUID[unitGUID] = nameplate
-    nameplate.unitGUID = unitGUID
-    nameplate._noClassUntil = nil
-end
-
+-- A binding is `proven` (token, raid mark or a unique name) or guessed; only a conflicting proof replaces a proven one.
 local function ClearGUID(nameplate)
     local guid = nameplate.unitGUID
     if not guid then return end
-    nameplatesByGUID[guid] = nil
+    if nameplatesByGUID[guid] == nameplate then
+        nameplatesByGUID[guid] = nil
+    end
     nameplate.unitGUID = nil
+    nameplate._bindProven = false
+    nameplate._boundName = nil
     nameplate._cachedUnitID = nil
     nameplate._noClassUntil = nil
+end
+
+-- A GUID is on one plate at a time: the plate that held it is left unbound and both are redrawn.
+-- Returns true when the plate's GUID changed.
+local function BindGUID(nameplate, guid, proven)
+    if nameplate.unitGUID == guid then
+        nameplate._bindProven = nameplate._bindProven or proven
+        return false
+    end
+
+    local previousHolder = nameplatesByGUID[guid]
+    ClearGUID(nameplate)
+    if previousHolder then
+        ClearGUID(previousHolder)
+    end
+
+    nameplatesByGUID[guid] = nameplate
+    nameplate.unitGUID = guid
+    nameplate._bindProven = proven
+    nameplate._boundName = Nameplate:GetPlateName(nameplate)
+    nameplate._noClassUntil = nil
+
+    if previousHolder then
+        Nameplate:UpdateAuras(previousHolder)
+    end
+    Nameplate:UpdateAuras(nameplate)
+    return true
 end
 
 function Nameplate:Get(unitGUID)
@@ -305,6 +330,10 @@ function Nameplate:GetUnitID(nameplate)
     return GetUnitID(nameplate)
 end
 
+function Nameplate:GetUnitCandidates()
+    return BuildUnitCandidates()
+end
+
 function addon.Nameplate:IsTargetPlate(nameplate)
     if not nameplate then
         return false
@@ -364,12 +393,6 @@ local function GetUnitLevel(nameplate)
         return "??"
     end
     return default.unitLevel:GetText()
-end
-
-local function GetUnitHealth(nameplate)
-    local default = GetDefaultFrame(nameplate)
-    local _, unitHealth = default.healthBar:GetMinMaxValues()
-    return unitHealth
 end
 
 -------------------------------------------------
@@ -812,69 +835,118 @@ end
 -- Nameplate show/hide / update
 -------------------------------------------------
 
-local function ResolveInitialUnit(nameplate)
-    local plateName  = GetUnitName(nameplate)
-    local candidates = BuildUnitCandidates()
+local function LearnFromToken(unitID, guid)
+    local _, class = UnitClass(unitID)
+    addon.Units:SetGUID(guid, UnitName(unitID), UnitHealthMax(unitID) or 0, class)
+    NoteUnitClass(unitID, guid, class)
+end
 
-    for _, unitID in ipairs(candidates) do
-        if UnitExists(unitID) then
-            local guid     = UnitGUID(unitID)
-            local unitName = UnitName(unitID)
-            if guid and unitName and unitName == plateName then
-                local _, class = UnitClass(unitID)
-                local maxHealth = UnitHealthMax(unitID) or 0
-                SetGUID(nameplate, guid)
-                addon.Units:SetGUID(guid, unitName, maxHealth, class)
-                NoteUnitClass(unitID, guid, class)
-                return unitID
-            end
-        end
+-- Proof 1: the plate is the target or the mouseover, and that unit has the plate's name.
+local function TokenProof(nameplate, plateName)
+    local unitID
+    if Nameplate:IsTarget(nameplate) then
+        unitID = "target"
+    elseif IsMouseover(nameplate) then
+        unitID = "mouseover"
     end
-
+    if unitID and UnitName(unitID) == plateName then
+        return UnitGUID(unitID)
+    end
     return nil
 end
 
+-- Proof 2: the plate shows a raid mark whose GUID the combat log or a token revealed.
+local function MarkProof(nameplate)
+    local icon = GetDefaultFrame(nameplate).raidIcon
+    if not icon:IsShown() then return nil end
+    local mark = addon.MarkIntel.RaidMarkFromTexCoord(icon:GetTexCoord())
+    return addon.MarkIntel:GUIDForMark(mark)
+end
+
+local function CountOtherPlatesShowing(nameplate, plateName)
+    local plates = addon.GetAllNameplates()
+    local count = 0
+    for i = 1, #plates do
+        local other = plates[i]
+        if other ~= nameplate then
+            local default = GetDefaultFrame(other)
+            if default:IsShown() and default.unitName:GetText() == plateName then
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
+-- Proof 3: one token GUID has the plate's name and no other visible plate shows it.
+local function NameProof(nameplate, plateName)
+    local candidates = BuildUnitCandidates()
+    local found
+    for i = 1, #candidates do
+        local unitID = candidates[i]
+        if UnitExists(unitID) and UnitName(unitID) == plateName then
+            local guid = UnitGUID(unitID)
+            if guid and found and guid ~= found then
+                return nil
+            end
+            found = found or guid
+        end
+    end
+    if found and CountOtherPlatesShowing(nameplate, plateName) == 0 then
+        return found
+    end
+    return nil
+end
+
+-- Only fills an empty plate with a GUID no plate holds: name and health seen
+-- through a token, or a player seen only in the combat log.
+local function Guess(nameplate)
+    if nameplate.unitGUID then return end
+    local guid = Nameplate:GetGUIDByNameAndHealthFromPlate(nameplate)
+        or addon.ClassIntel:GUIDForName(Nameplate:GetPlateName(nameplate))
+    if guid and not nameplatesByGUID[guid] then
+        BindGUID(nameplate, guid, false)
+    end
+end
+
+-- Order: target/mouseover token, raid mark, unique name, then guesses. A proven
+-- binding only gives way to another token or mark proof.
 local function ResolveOrFallbackGUID(nameplate)
-    -- Fast path: GUID already known, just re-validate its current token
-    -- instead of paying for a full name-matching candidate scan.
-    local guid = nameplate.unitGUID
-    if guid then
-        local unitID = ResolveUnitIDForGUID(nameplate, guid)
-        if unitID then
+    local plateName = Nameplate:GetPlateName(nameplate)
+    if plateName then
+        -- Blizzard reuses plate frames; a new name means a new unit.
+        if nameplate._boundName and nameplate._boundName ~= plateName then
+            ClearGUID(nameplate)
+        end
+
+        local guid = TokenProof(nameplate, plateName) or MarkProof(nameplate)
+        if not guid and not nameplate._bindProven then
+            guid = NameProof(nameplate, plateName)
+        end
+
+        if guid then
+            local changed = BindGUID(nameplate, guid, true)
+            local unitID = ResolveUnitIDForGUID(nameplate, guid)
+            if changed and unitID then
+                LearnFromToken(unitID, guid)
+            end
             return unitID
         end
+        Guess(nameplate)
     end
 
-    local unitID = ResolveInitialUnit(nameplate)
-    if unitID then
-        return unitID
-    end
+    local guid = nameplate.unitGUID
+    return guid and ResolveUnitIDForGUID(nameplate, guid) or nil
+end
 
-    -- fallback to old behaviour using cached GUID
-    local unitName   = GetUnitName(nameplate)
-    local unitHealth = GetUnitHealth(nameplate)
-    local unitGUID   = addon.Units:GetGUID(unitName, unitHealth)
+---Resolves the plate's GUID and returns the unit token that currently shows it, if any.
+function Nameplate:Resolve(nameplate)
+    return ResolveOrFallbackGUID(nameplate)
+end
 
-    if not unitGUID then
-        unitGUID = Nameplate:GetGUIDByNameAndHealthFromPlate(nameplate)
-    end
-
-    -- A player seen only in the combat log has no token but still has one GUID.
-    if not unitGUID then
-        unitGUID = addon.ClassIntel:GUIDForName(Nameplate:GetPlateName(nameplate))
-    end
-
-    if unitGUID then
-        if not Nameplate:Get(unitGUID) then
-            SetGUID(nameplate, unitGUID)
-        end
-        -- Previously this always returned the (still-nil) `unitID` local
-        -- from the primary resolution attempt above, even after a
-        -- successful fallback GUID lookup - now actually resolve a token.
-        return ResolveUnitIDForGUID(nameplate, unitGUID)
-    end
-
-    return nil
+---Drops the plate's GUID, e.g. when its frame is hidden.
+function Nameplate:Unbind(nameplate)
+    ClearGUID(nameplate)
 end
 
 local function OnShow(nameplate)

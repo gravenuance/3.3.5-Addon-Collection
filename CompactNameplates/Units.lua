@@ -6,7 +6,7 @@ addon.Units = Units
 -- per GUID: { name = ..., health = ..., class = ... }
 local unitData = {}
 
--- reverse lookup: key "name|health" -> guid
+-- reverse lookup: key "name|health" -> guid, or false once two GUIDs share the key
 local unitGUIDs = {}
 
 local function MakeKey(name, health)
@@ -40,7 +40,12 @@ function Units:SetGUID(guid, name, health, class)
     -- Only update reverse lookup if we have both pieces
     local key = MakeKey(name, health)
     if key then
-        unitGUIDs[key] = guid
+        local known = unitGUIDs[key]
+        if known == nil then
+            unitGUIDs[key] = guid
+        elseif known ~= guid then
+            unitGUIDs[key] = false
+        end
     end
 end
 
