@@ -1,5 +1,5 @@
--- The spec replaces client globals with stubs on purpose.
----@diagnostic disable: duplicate-set-field
+-- Runs in the standalone interpreter and replaces client globals with stubs on purpose.
+---@diagnostic disable: duplicate-set-field, undefined-global
 local t = ...
 
 -- Hostile player, hostile NPC and hostile pet flags from a 3.3.5 combat log.
