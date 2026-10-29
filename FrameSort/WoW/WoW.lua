@@ -57,7 +57,8 @@ local wow = {
     GetSpecializationInfoByID = GetSpecializationInfoByID,
     GetSpecialization = GetSpecialization,
     GetInspectSpecialization = GetInspectSpecialization,
-    UnitGroupRolesAssigned = UnitGroupRolesAssigned,
+    -- 3.3.5's UnitGroupRolesAssigned returns three booleans; ClassicAPI's version returns the role string
+    UnitGroupRolesAssigned = C_UnitGroupRolesAssigned or UnitGroupRolesAssigned,
     UnitIsGroupLeader = UnitIsGroupLeader,
     PromoteToLeader = PromoteToLeader,
 

@@ -4,7 +4,7 @@
 ## Author: Verz, Tsoukie
 ## Version: 1.2
 ## SavedVariables: FrameSortDB
-## Dependencies: CompactRaidFrame
+## Dependencies: CompactRaidFrame, !!!ClassicAPI
 ## OptionalDeps: Cell, ElvUI, Grid2, GladiusEx, ShadowedUnitFrames
 
 Load-Classic.xml
