@@ -364,6 +364,7 @@ function Module:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
     if not isHooked then
         MiniMapInstanceDifficulty:HookScript('OnEvent', MiniMapInstanceDifficulty_OnEvent)
+        isHooked = true
     end
 
     self:SecureHook('Minimap_UpdateRotationSetting', Minimap_UpdateRotationSetting)
