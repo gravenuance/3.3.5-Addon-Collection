@@ -200,6 +200,7 @@ function BackdropTemplateMixin:OnBackdropLoaded()
         if self.backdropBorderBlendMode then
             self:SetBorderBlendMode(self.backdropBorderBlendMode);
         end
+        self.___BackdropApplied = self.backdropInfo; -- Lets OnSizeChanged skip the full re-apply on later resizes.
     end
 end
 
@@ -310,6 +311,7 @@ function BackdropTemplateMixin:ClearBackdrop()
             end
         end
         self.backdropInfo = nil;
+        self.___BackdropApplied = nil;
     end
 end
 

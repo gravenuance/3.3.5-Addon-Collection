@@ -7,7 +7,9 @@
         Mixin(self, BackdropTemplateMixin)
       </OnLoad>
       <OnSizeChanged>
-        self:OnBackdropLoaded()
+        if self.___BackdropApplied ~= self.backdropInfo then
+          self:OnBackdropLoaded()
+        end
         self:OnBackdropSizeChanged()
       </OnSizeChanged>
     </Scripts>
