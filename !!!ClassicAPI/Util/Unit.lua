@@ -130,12 +130,12 @@ EventHandler_Register("OnUnregister", "PLAYER_ROLES_ASSIGNED", PLAYER_ROLES_ASSI
 local UNIT_CONNECTION_STATUS
 local function UNIT_CONNECTION_EH(Trigger, Event, UnitID, Connected)
 	if ( Trigger == "OnEvent" ) then
-		if ( not Connected ) then -- HACK: Prevent continuation within Handler, only callback after we add "Connected" to payload.
+		if ( Event == "UNIT_FACTION" ) then -- HACK: Prevent continuation within Handler, only callback after we add "Connected" to payload.
 			local Connected = UnitIsConnected(UnitID) and true or false
 
 			if ( Connected ~= UNIT_CONNECTION_STATUS[UnitID] ) then
+				UNIT_CONNECTION_STATUS[UnitID] = Connected
 				EventHandler_Fire(nil, "UNIT_CONNECTION", UnitID, Connected)
-				UNIT_CONNECTION_STATUS[UnitID] = Connected or nil
 			end
 
 			return false

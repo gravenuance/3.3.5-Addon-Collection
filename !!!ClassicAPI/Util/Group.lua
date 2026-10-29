@@ -12,7 +12,6 @@ local GetNumRaidMembers = GetNumRaidMembers
 local GetRaidRosterInfo = GetRaidRosterInfo
 local PromoteToAssistant = PromoteToAssistant
 local GetNumPartyMembers = GetNumPartyMembers
-local GetPartyLeaderIndex = GetPartyLeaderIndex
 local GetRealNumRaidMembers = GetRealNumRaidMembers
 local LE_PARTY_CATEGORY_INSTANCE = LE_PARTY_CATEGORY_INSTANCE
 
@@ -27,7 +26,7 @@ function IsInGroup(LE_CATEGORY)
 end
 
 function IsInRaid(LE_CATEGORY)
-	if ( LE_CATEGORY and LE_CATEGORY ~= LE_PARTY_CATEGORY_INSTANCE ) then
+	if ( LE_CATEGORY and LE_CATEGORY == LE_PARTY_CATEGORY_INSTANCE ) then
 		return false
 	end
 	return GetNumRaidMembers() > 0
@@ -49,18 +48,34 @@ function GetNumGroupMembers()
 end
 
 function UnitIsGroupLeader(unit)
-	local isLeader
-
-	if ( not IsInGroup() ) then
-		isLeader = false
-	elseif ( unit == "player" ) then
-		isLeader = IsInRaid() and IsRaidLeader() or IsPartyLeader()
-	else
-		local index = unit:match("%d+")
-		isLeader = index and GetPartyLeaderIndex() == index
+	if ( not unit or not IsInGroup() ) then
+		return false
 	end
-	
-	return isLeader
+
+	if ( unit == "player" ) then
+		return (IsInRaid() and IsRaidLeader() or IsPartyLeader()) and true or false
+	end
+
+	if ( IsInRaid() ) then
+		local index = tonumber(unit:match("^raid(%d+)$"))
+		if ( not index ) then
+			for i=1, GetNumRaidMembers() do
+				if ( UnitIsUnit(unit, "raid"..i) ) then
+					index = i
+					break
+				end
+			end
+		end
+
+		if ( not index ) then
+			return false
+		end
+
+		local _, rank = GetRaidRosterInfo(index)
+		return rank == 2
+	end
+
+	return UnitIsPartyLeader(unit) and true or false
 end
 
 function UnitIsGroupAssistant(unit)

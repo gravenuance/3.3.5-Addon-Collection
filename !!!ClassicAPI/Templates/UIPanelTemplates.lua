@@ -53,7 +53,9 @@ function BagSearch_OnTextChanged(self, userChanged)
 	if ( text == SEARCH ) then
 		text = "";
 	end
-	SetItemSearch(text);
+	if ( _G.SetItemSearch ) then -- Not present on 3.3.5.
+		_G.SetItemSearch(text);
+	end
 	if (text ~= "") then
 		self.clearButton:Show();
 	else
@@ -92,7 +94,7 @@ function BagSearch_OnEditFocusGained(self)
 end
 
 function BagSearch_OnEditFocusLost(self)
-	SerachBoxTemplate_OnEditFocusGained(self);
+	SearchBoxTemplate_OnEditFocusLost(self);
 
 	local search = self:GetText();
 	for _,barName in pairs(ITEM_SEARCHBAR_LIST) do

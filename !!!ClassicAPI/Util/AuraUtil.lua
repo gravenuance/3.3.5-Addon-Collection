@@ -52,11 +52,11 @@ do
 
         local index = 1;
         while not maxCount or index <= maxCount do
-            local name, rank, icon, count, auraType, duration, expire, caster, steal, consolidate, id = UnitAura(unit, index, filter);
+            local name, _, icon, count, auraType, duration, expire, caster, steal, consolidate, id = UnitAura(unit, index, filter);
             if not name then
                 break;
             end
-            if func(name, rank, icon, count, auraType, duration, expire, caster, steal, consolidate, id) then
+            if func(name, icon, count, auraType, duration, expire, caster, steal, consolidate, id) then
                 break;
             end
             index = index + 1;

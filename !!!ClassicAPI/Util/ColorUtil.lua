@@ -54,5 +54,7 @@ function GetClassColoredTextForUnit(unit, text)
 end
 
 function GetFactionColor(factionGroupTag)
-	return PLAYER_FACTION_COLORS[PLAYER_FACTION_GROUP[factionGroupTag]];
+	-- PLAYER_FACTION_COLORS does not exist on 3.3.5.
+	local colors = _G.PLAYER_FACTION_COLORS;
+	return colors and colors[PLAYER_FACTION_GROUP[factionGroupTag]];
 end

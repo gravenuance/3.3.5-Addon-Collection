@@ -176,7 +176,7 @@ end
 
 function ItemMixin:GetCurrentItemLevel() -- requires item data to be loaded
 	if self:GetStaticBackingItem() then
-		return (GetDetailedItemLevelInfo(self:GetStaticBackingItem()))
+		return (select(4, GetItemInfo(self:GetStaticBackingItem())))
 	end
 
 	if not self:IsItemEmpty() then
@@ -280,7 +280,7 @@ local function Processor(self, elapsed)
 					ItemEventListener:ClearCallbacks(itemID)
 				end
 
-				itemCallbacks[0] = timeout - elapsed
+				itemCallbacks[0] = timeout - ELAPSE
 			end
 		end
 
@@ -324,6 +324,9 @@ end
 
 function ItemEventListener:AddCancelableCallback(itemID, callbackFunction)
 	local callbacks = self:GetOrCreateCallbacks(itemID)
+	if not callbacks[0] then
+		callbacks[0] = TIMEOUT_SENTINEL
+	end
 	local index = #callbacks+1
 	callbacks[index] = callbackFunction
 	Accessor()
@@ -343,7 +346,9 @@ function ItemEventListener:FireCallbacks(itemID)
 		local callbackTotal = #callbacks
 		self:ClearCallbacks(itemID)
 		for i=1,callbackTotal do
-			callbacks[i]()
+			if callbacks[i] ~= CANCELED_SENTINEL then
+				callbacks[i]()
+			end
 		end
 
 		for i = callbackTotal, 0, -1 do

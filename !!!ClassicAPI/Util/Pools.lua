@@ -134,7 +134,12 @@ end
 
 local MaskPoolMixin = CreateFromMixins(ObjectPoolMixin);
 local function MaskPoolFactory(maskPool)
-	return maskPool.parent:CreateMaskTexture(nil, maskPool.layer, maskPool.maskTemplate, maskPool.subLayer);
+	-- 3.3.5 only has a CreateMaskTexture stub that returns nothing.
+	local mask = maskPool.parent:CreateMaskTexture(nil, maskPool.layer, maskPool.maskTemplate, maskPool.subLayer);
+	if not mask then
+		error("MaskPool: mask textures are not available on this client.", 0);
+	end
+	return mask;
 end
 function MaskPoolMixin:OnLoad(parent, layer, subLayer, maskTemplate, resetterFunc)
 	ObjectPoolMixin.OnLoad(self, MaskPoolFactory, resetterFunc);
@@ -172,6 +177,9 @@ end
 
 local ActorPoolMixin = CreateFromMixins(ObjectPoolMixin);
 local function ActorPoolFactory(actorPool)
+	if not actorPool.parent.CreateActor then
+		error("ActorPool: CreateActor is not available on this client.", 0);
+	end
 	return actorPool.parent:CreateActor(nil, actorPool.actorTemplate);
 end
 function ActorPoolMixin:OnLoad(parent, actorTemplate, resetterFunc)
@@ -383,6 +391,10 @@ function CreateFontStringPoolCollection()
 	local poolCollection = CreateFromMixins(FontStringPoolCollectionMixin);
 	poolCollection:OnLoad();
 	return poolCollection;
+end
+-- CreatePool stores pools by bare template, so the inherited template..specialization key never finds them.
+function FontStringPoolCollectionMixin:GetPool(fontStringTemplate)
+	return self.pools[fontStringTemplate];
 end
 function FontStringPoolCollectionMixin:GetOrCreatePool(parent, layer, subLayer, fontStringTemplate, resetterFunc)
 	local pool = self:GetPool(fontStringTemplate);
