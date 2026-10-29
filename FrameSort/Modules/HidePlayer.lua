@@ -48,7 +48,13 @@ function M:Run()
     local blizzard = fsProviders.Blizzard
     local enabled, mode, _, _ = fsCompare:FriendlySortMode()
 
-    if not enabled or not blizzard:Enabled() then
+    if not blizzard:Enabled() then
+        return
+    end
+
+    -- undo an earlier hide when sorting is off here (e.g. Hidden in world, then a raid with sorting disabled)
+    if not enabled then
+        ShowHide(true)
         return
     end
 
