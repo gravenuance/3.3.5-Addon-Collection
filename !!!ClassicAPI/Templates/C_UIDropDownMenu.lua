@@ -437,7 +437,7 @@ function C_UIDropDownMenu_AddButton(info, level)
 
 	-- Allow radio buttons within UIDropDownMenu.
 	if ( C_UIDROPDOWNMENU_OPEN_MENU and not button.notCheckable ) then
-		if ( info.disabled or (info.isRadio and not info.checked) ) then
+		if ( info.disabled or (info.isRadio and not checked) ) then
 			check:SetDesaturated(true)
 			check:SetAlpha(.25)
 		else
@@ -449,7 +449,7 @@ function C_UIDropDownMenu_AddButton(info, level)
 			check:SetTexture("Interface\\Buttons\\UI-RadioButton")
 			check:Show()
 
-			if ( info.checked ) then
+			if ( checked ) then
 				check:SetTexCoord(.25, .5, 0, 1)
 			else
 				check:SetTexCoord(0, .25, 0, 1)
@@ -762,7 +762,7 @@ function C_ToggleDropDownMenu(level, value, dropDownFrame, anchorName, xOffset, 
 			end
 			listFrame:ClearAllPoints();
 			-- If this is a dropdown button, not the arrow anchor it to itself
-			if ( strsub(button:GetParent():GetName(), 0,12) == "C_DropDownList" and strlen(button:GetParent():GetName()) == 13 ) then
+			if ( strsub(button:GetParent():GetName(), 1, 14) == "C_DropDownList" and strlen(button:GetParent():GetName()) == 15 ) then
 				anchorFrame = button;
 			else
 				anchorFrame = button:GetParent();
@@ -970,13 +970,13 @@ function C_UIDropDownMenuButton_GetName(self)
 	return _G[self:GetName().."NormalText"]:GetText();
 end
 
-function C_UIDropDownMenuButton_C_OpenColorPicker(self, button)
+function C_UIDropDownMenuButton_OpenColorPicker(self, button)
 	CloseMenus();
 	if ( not button ) then
 		button = self;
 	end
 	C_UIDROPDOWNMENU_MENU_VALUE = button.value;
-	C_OpenColorPicker(button);
+	OpenColorPicker(button);
 end
 
 function C_UIDropDownMenu_DisableButton(level, id)
