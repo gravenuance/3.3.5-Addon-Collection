@@ -8,7 +8,8 @@ local FONT_FLAG              = "OUTLINE"
 -- Saved variables
 -------------------------------------------------------
 
-RAFDB                        = RAFDB or {
+-- RAFDB is loaded after this file runs, so defaults are merged in ADDON_LOADED.
+local DB_DEFAULTS            = {
     x      = 0,
     y      = 0,
     locked = false,
@@ -262,7 +263,7 @@ RAF.frame = RAF.frame or CreateFrame("Frame", addonName .. "Root", UIParent)
 local root = RAF.frame
 
 root:SetSize(frameWidth, frameHeight * #ARENA_UNITS + 8)
-root:SetPoint("CENTER", UIParent, "CENTER", RAFDB.x, RAFDB.y)
+root:SetPoint("CENTER", UIParent, "CENTER", DB_DEFAULTS.x, DB_DEFAULTS.y)
 root:SetMovable(true)
 root:SetClampedToScreen(true)
 root:EnableMouse(true)
@@ -305,11 +306,7 @@ overlay.tex = tex
 tex:SetAllPoints(overlay)
 tex:SetColorTexture(0, 0, 0, 0.3)
 
-if RAFDB.locked then
-    overlay:Hide()
-else
-    overlay:Show()
-end
+overlay:Show()
 
 overlay:EnableMouse(true)
 overlay:SetScript("OnMouseDown", function(self, button)
@@ -978,7 +975,25 @@ end
 -- Events
 -------------------------------------------------------
 
+local function ApplySavedSettings()
+    RAFDB = RAFDB or {}
+    for key, value in pairs(DB_DEFAULTS) do
+        if RAFDB[key] == nil then
+            RAFDB[key] = value
+        end
+    end
+
+    root:ClearAllPoints()
+    root:SetPoint("CENTER", UIParent, "CENTER", RAFDB.x, RAFDB.y)
+    if RAFDB.locked then
+        overlay:Hide()
+    else
+        overlay:Show()
+    end
+end
+
 local ef = CreateFrame("Frame")
+ef:RegisterEvent("ADDON_LOADED")
 ef:RegisterEvent("PLAYER_LOGIN")
 ef:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ef:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -994,7 +1009,12 @@ ef:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 ef:RegisterEvent("UNIT_AURA")
 
 ef:SetScript("OnEvent", function(self, event, arg1, ...)
-    if event == "PLAYER_LOGIN" then
+    if event == "ADDON_LOADED" then
+        if arg1 == addonName then
+            self:UnregisterEvent("ADDON_LOADED")
+            ApplySavedSettings()
+        end
+    elseif event == "PLAYER_LOGIN" then
         RAF:RefreshVisibility()
 
         if RAF.overlay then
