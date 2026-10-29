@@ -109,6 +109,7 @@ local function OnUpdate(self, elapsed)
     end
 
     addon.ClassIntel:Tick(elapsed)
+    addon.Auras:Tick()
 
     sortElapsed = sortElapsed + elapsed
     if sortElapsed < SORT_INTERVAL then return end
@@ -167,6 +168,7 @@ driverFrame:SetScript("OnUpdate", OnUpdate)
 
 local function OnLoad()
     addon.Settings:ApplyDefaults()
+    CompactNameplatesDB = addon.Auras:LoadDB(CompactNameplatesDB)
 end
 
 RegisterEvent("ADDON_LOADED", function(self, name)
@@ -178,6 +180,7 @@ end)
 
 RegisterEvent("PLAYER_ENTERING_WORLD", function()
     addon.ClassIntel:OnEnteringWorld()
+    addon.Auras:OnEnteringWorld()
 end)
 
 RegisterEvent("UPDATE_BATTLEFIELD_SCORE", function()
@@ -193,7 +196,13 @@ RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(self, ...)
         addon.Auras:OnApply(...)
     elseif subevent == "SPELL_AURA_REMOVED" then
         addon.Auras:OnRemove(...)
+    elseif subevent == "SPELL_AURA_BROKEN" then
+        addon.Auras:OnRemove(...)
+    elseif subevent == "SPELL_AURA_BROKEN_SPELL" then
+        addon.Auras:OnBrokenSpell(...)
     elseif subevent == "SPELL_AURA_STOLEN" then
         addon.Auras:OnStolen(...)
+    elseif subevent == "UNIT_DIED" then
+        addon.Auras:OnDied(...)
     end
 end)
