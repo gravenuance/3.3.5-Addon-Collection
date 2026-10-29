@@ -394,6 +394,7 @@ local function zb_remove_icon(bar, length, id, is_aura, src_guid, dst_guid)
         bar[index].duration = bar[index+1].duration
         bar[index].start = bar[index+1].start
         bar[index].cooldown = bar[index+1].cooldown
+        bar[index].list = bar[index+1].list
         bar[index].texture:SetTexture(bar[index+1].texture:GetTexture())
         bar[index].text:SetText(bar[index+1].text:GetText())
         bar[index].cd:SetCooldown(bar[index].start,bar[index].duration)
@@ -435,11 +436,12 @@ local function zb_get_duration(list, id, src_guid)
     end
 end
 
-local function zb_update_cooldowns(bar, length, list)
+local function zb_update_cooldowns(bar, length)
     if length > 1 then
         local index = 1
         local get_time = GetTime()
         while index < length do
+            local list = bar[index].list
             bar[index].cooldown = bar[index].start + bar[index].duration - get_time
             if bar[index].cooldown <= 0 then
                 if list[bar[index].id].has_charges and bar[index].has_charges < list[bar[index].id].has_charges then
@@ -473,9 +475,9 @@ local function zb_on_update(self, elapsed)
             zb_frame:SetScript("OnUpdate",nil)
             return
         end
-        length_of_player_bar = zb_update_cooldowns(player_bar, length_of_player_bar, player_spells_list)
-        length_of_hostile_bar = zb_update_cooldowns(hostile_bar, length_of_hostile_bar, spells_list)
-        length_of_party_bar = zb_update_cooldowns(party_bar, length_of_party_bar, spells_list)
+        length_of_player_bar = zb_update_cooldowns(player_bar, length_of_player_bar)
+        length_of_hostile_bar = zb_update_cooldowns(hostile_bar, length_of_hostile_bar)
+        length_of_party_bar = zb_update_cooldowns(party_bar, length_of_party_bar)
         total_time_elapsed = 0
     end
 end
@@ -519,6 +521,7 @@ local function zb_add_icon(bar, length, id, list, src_guid, dst_guid)
         
 
         bar[length].id = id
+        bar[length].list = list
 
         local _,_,icon = GetSpellInfo(id)
         bar[length].texture:SetTexture(icon)
@@ -574,6 +577,20 @@ local function zb_is_in_party(guid)
     return party_guids[guid] == true
 end
 
+-- Arms the player's procs (Revenge) that trigger on an incoming swing the player avoided.
+local function zb_add_swing_proc_icons(miss_type)
+    for id, info in pairs(player_spells_list) do
+        if info.is_swing and (info.class == nil or info.class == player_class) then
+            for _, swing_type in ipairs(info.swing_types) do
+                if swing_type == miss_type then
+                    length_of_player_bar = zb_add_icon(player_bar, length_of_player_bar, id, player_spells_list, player_guid)
+                    break
+                end
+            end
+        end
+    end
+end
+
 local function zb_combat_log(timestamp, combat_event, src_guid, src_name, src_flags, dst_guid, dst_name, dst_flags, spell_id, spell_name)
     count_delay_from_start = GetTime()
     if is_debugging and (src_guid == (player_guid or UnitGUID("target"))) then
@@ -598,23 +615,19 @@ local function zb_combat_log(timestamp, combat_event, src_guid, src_name, src_fl
             end
         end
     end
+    if combat_event == "SWING_MISSED" then
+        -- The miss type takes the spell_id slot for swings.
+        if dst_guid == player_guid then
+            zb_add_swing_proc_icons(spell_id)
+        end
+        return
+    end
     if bit.band(src_flags, COMBATLOG_OBJECT_AFFILIATION_MINE) > 0 then
-        if player_spells_list[spell_id] then 
+        if player_spells_list[spell_id] then
             if zb_is_in_party(dst_guid) then
                 length_of_party_bar = zb_event_type(combat_event, party_bar, length_of_party_bar, spell_id, player_spells_list, src_guid, dst_guid)
             else
                 length_of_player_bar = zb_event_type(combat_event, player_bar, length_of_player_bar, spell_id, player_spells_list, src_guid)
-            end
-        elseif combat_event == "SWING_MISSED" then
-            for id, info in pairs(player_spells_list) do
-                if info.is_swing and (info.class == nil or info.class == player_class) then
-                    for _, swing_type in ipairs(info.swing_types) do
-                        if swing_type == spell_id then
-                            length_of_player_bar = zb_add_icon(player_bar, length_of_player_bar, id, player_spells_list, src_guid)
-                            return
-                        end
-                    end
-                end
             end
         end
     elseif spells_list[spell_id] then  
@@ -716,16 +729,15 @@ local function zb_remove_ex_party_member_icons()
     local index = 1
     while index < length_of_party_bar do
         local removed = false
-        if (party_bar[index]["src_guid"]) then
-            if not zb_is_in_party(party_bar[index].src_guid) then
-                length_of_party_bar = zb_remove_icon(party_bar, length_of_party_bar, index, false)
-                removed = true
-            end
-        elseif (party_bar[index]["dst_guid"]) then
-            if not zb_is_in_party(party_bar[index].dst_guid) then
-                length_of_party_bar = zb_remove_icon(party_bar, length_of_party_bar, index, false)
-                removed = true
-            end
+        local icon = party_bar[index]
+        -- The player's own icons are tied to the party member they target, never to the player's GUID.
+        local member_guid = icon.src_guid
+        if member_guid == player_guid then
+            member_guid = icon.dst_guid
+        end
+        if member_guid and not zb_is_in_party(member_guid) then
+            length_of_party_bar = zb_remove_icon(party_bar, length_of_party_bar, index, false)
+            removed = true
         end
         if not removed then
             index = index + 1
