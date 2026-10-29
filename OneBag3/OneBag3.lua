@@ -83,7 +83,7 @@ function OneBag3:OnInitialize()
 end
 
 function OneBag3:OnEnable()
-    self:SecureHook('IsBagOpen')
+    self:RawHook('IsBagOpen', true)
     self:RawHook('ToggleBag', true)
     self:RawHook('OpenBag', true)
     self:RawHook('CloseBag', true)
@@ -146,7 +146,8 @@ function OneBag3:OnMainFrameShow()
     end
 
     self:RegisterEvent('BAG_UPDATE', UpdateBag)
-    self:RegisterEvent('BAG_UPDATE_COOLDOWN', UpdateBag)
+    -- BAG_UPDATE_COOLDOWN carries no bag id, so refresh every bag
+    self:RegisterEvent('BAG_UPDATE_COOLDOWN', 'UpdateFrame')
     self:RegisterEvent('UPDATE_INVENTORY_ALERTS', 'UpdateFrame')
     self:RegisterEvent('ITEM_LOCK_CHANGED', 'UpdateItemLock')
 
@@ -222,8 +223,8 @@ end
 -- API hooks
 
 function OneBag3:IsBagOpen(bagid)
-    if type(bagid) == 'number' and (bagid < 0 or bagid > 4) then
-        return
+    if not IsManagedBag(bagid) then
+        return self.hooks.IsBagOpen(bagid)
     end
     return self.isOpened and bagid or nil
 end
