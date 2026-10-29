@@ -166,7 +166,9 @@ function SetupTextureKitOnFrame(textureKit, frame, fmt, setVisibility, useAtlasS
 
     if textureKit then
         if frame:GetObjectType() == "StatusBar" then
-            success = frame:SetStatusBarAtlas(GetFinalNameFromTextureKit(fmt, textureKit));
+            if frame.SetStatusBarAtlas then -- Not present on 3.3.5.
+                success = frame:SetStatusBarAtlas(GetFinalNameFromTextureKit(fmt, textureKit));
+            end
         elseif frame.SetAtlas then
             success = frame:SetAtlas(GetFinalNameFromTextureKit(fmt, textureKit), useAtlasSize);
         end

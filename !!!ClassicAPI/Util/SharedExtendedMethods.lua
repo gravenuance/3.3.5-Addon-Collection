@@ -144,7 +144,7 @@ local function Method_SetAtlas(...)
 	if ( Preceding_SetAtlas ) then
 		local Success = PCall(Preceding_SetAtlas, ...)
 		if ( Success and Preceding_GetAtlas and Preceding_GetAtlas(...) ) then
-			return
+			return true
 		end
 	end
 
@@ -153,7 +153,10 @@ local function Method_SetAtlas(...)
 
 	Assert(Self, "SetAtlas: Not a valid object")
 	Assert(AtlasName, "SetAtlas: Atlas must be specified")
-	Assert(Atlas, "SetAtlas: Atlas named "..AtlasName.." does not exist")
+
+	if ( not Atlas ) then
+		return false
+	end
 
 	Self:SetTexture(Atlas[CONST_ATLAS_TEXTUREPATH] or "", Atlas[CONST_ATLAS_TILESHORIZ], Atlas[CONST_ATLAS_TILESVERT])
 
@@ -167,6 +170,8 @@ local function Method_SetAtlas(...)
 	Self:SetVertTile(Atlas[CONST_ATLAS_TILESVERT])
 
 	Self.___AtlasName = AtlasName
+
+	return true
 end
 
 local function Method_GetAtlas(Self)
