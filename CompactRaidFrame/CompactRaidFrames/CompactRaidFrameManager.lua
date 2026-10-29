@@ -5,7 +5,7 @@ local RESIZE_HORIZONTAL_OUTSETS = 4;
 local RESIZE_VERTICAL_OUTSETS = 7;
 
 local UnitGroupRolesAssigned = C_UnitGroupRolesAssigned;
-local PLAYER_REGEN_ENABLED_AWAIT;
+local PLAYER_REGEN_ENABLED_AWAIT = {};  --Events that arrived in combat, replayed on PLAYER_REGEN_ENABLED.
 
 local function  CompactRaidFrameManager_Toggle_OnLoad(self)
     local toggleButton = self.toggleButton;
@@ -70,16 +70,21 @@ end
 local settings = { --[["Managed",]] "Locked", "SortMode", "KeepGroupsTogether", "DisplayPets", "DisplayMainTankAndAssist", "IsShown", "ShowBorders" };
 function CompactRaidFrameManager_OnEvent(self, event, ...)
     if ( event == "PLAYER_REGEN_ENABLED" ) then
-        if ( PLAYER_REGEN_ENABLED_AWAIT ) then
-            PLAYER_REGEN_ENABLED_AWAIT = nil;
-            RaidOptionsFrame_UpdatePartyFrames();
-            CompactRaidFrameManager_OnEvent(self, "PLAYER_ENTERING_WORLD");
+        for pendingEvent in pairs(PLAYER_REGEN_ENABLED_AWAIT) do
+            PLAYER_REGEN_ENABLED_AWAIT[pendingEvent] = nil;
+            CompactRaidFrameManager_OnEvent(self, pendingEvent);
         end
     elseif ( event == "RAID_TARGET_UPDATE" or event == "PLAYER_TARGET_CHANGED" ) then
         CompactRaidFrameManager_UpdateRaidIcons();
+    elseif ( event == "UNIT_FLAGS" or event == "PLAYER_FLAGS_CHANGED" or event == "PLAYER_ROLES_ASSIGNED" ) then
+        CompactRaidFrameManager_UpdateDisplayCounts(self);  --Only touches unprotected labels and buttons, so it is safe in combat.
     else
         if ( InCombatLockdown() ) then
-            PLAYER_REGEN_ENABLED_AWAIT = true;
+            if ( event == "GROUP_ROSTER_UPDATE" ) then
+                CompactRaidFrameManager_UpdateDisplayCounts(self);
+                CompactRaidFrameManager_UpdateLabel(self);
+            end
+            PLAYER_REGEN_ENABLED_AWAIT[event] = true;
         elseif ( event == "DISPLAY_SIZE_CHANGED" or event == "UI_SCALE_CHANGED" ) then
             CompactRaidFrameManager_UpdateContainerBounds(self);
         elseif ( event == "GROUP_ROSTER_UPDATE" ) then -- or UPDATE_ACTIVE_BATTLEFIELD
@@ -88,8 +93,6 @@ function CompactRaidFrameManager_OnEvent(self, event, ...)
             CompactRaidFrameManager_UpdateDisplayCounts(self);
             CompactRaidFrameManager_UpdateLabel(self);
             CompactRaidFrameManager_UpdateContainerLockVisibility(self);
-        elseif ( event == "UNIT_FLAGS" or event == "PLAYER_FLAGS_CHANGED" or event == "PLAYER_ROLES_ASSIGNED" ) then
-            CompactRaidFrameManager_UpdateDisplayCounts(self);
         elseif ( event == "PLAYER_ENTERING_WORLD" ) then
             CompactRaidFrameManager_UpdateShown(self);
             CompactRaidFrameManager_UpdateDisplayCounts(self);
@@ -376,7 +379,7 @@ function CompactRaidFrameManager_GetSettingBeforeLoad(settingName)
     elseif ( settingName == "HorizontalGroups" ) then
         return false;
     else
-        GMError("Unknown setting "..tostring(settingName));
+        geterrorhandler()("Unknown setting "..tostring(settingName));
     end
 end
 
@@ -408,7 +411,7 @@ do  --Enclosure to make sure people go through SetSetting
             CompactRaidFrameContainer_SetFlowSortFunction(manager.container, CRFSort_Alphabetical);
         else
             CompactRaidFrameManager_SetSetting("SortMode", "role");
-            GMError("Unknown sort mode: "..tostring(value));
+            geterrorhandler()("Unknown sort mode: "..tostring(value));
         end
     end
 
@@ -758,10 +761,10 @@ function CRFSort_Role(token1, token2)
     local id1, id2 = UnitInRaid(token1), UnitInRaid(token2);
     local role1, role2;
     if ( id1 ) then
-        role1 = select(10, GetRaidRosterInfo(id1));
+        role1 = select(10, GetRaidRosterInfo(id1 + 1));  --UnitInRaid is 0-based, GetRaidRosterInfo 1-based.
     end
     if ( id2 ) then
-        role2 = select(10, GetRaidRosterInfo(id2));
+        role2 = select(10, GetRaidRosterInfo(id2 + 1));
     end
 
     role1 = role1 or UnitGroupRolesAssigned(token1);
