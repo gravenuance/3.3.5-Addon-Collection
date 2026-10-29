@@ -9,6 +9,17 @@ local function Trim(str)
     return (str:gsub("^%s*(.-)%s*$", "%1"))
 end
 
+-- 3.3.5 raid difficulty: 1/2 = 10/25 normal, 3/4 = 10/25 heroic. An
+-- unrecognised value counts as enabled if either option is on.
+local function RaidDifficultyEnabled(raidOptions, difficultyID)
+    if difficultyID == 1 or difficultyID == 2 then
+        return raidOptions.normal
+    elseif difficultyID == 3 or difficultyID == 4 then
+        return raidOptions.heroic
+    end
+    return raidOptions.normal or raidOptions.heroic
+end
+
 local options = {
     name = "SimpleCombatLogger",
     handler = SimpleCombatLogger,
@@ -160,8 +171,14 @@ function SimpleCombatLogger:OnInitialize()
     self:RegisterChatCommand("scl", "ChatCommand")
     self:RegisterChatCommand("SimpleCombatLogger", "ChatCommand")
 
+    -- Pick up logging that is already on (e.g. /combatlog before a reload).
+    IsLoggingCombat = LoggingCombat() and true or false
+
     hooksecurefunc("LoggingCombat", function(state)
-        IsLoggingCombat = state
+        -- A call without an argument only queries the state; keep what we know.
+        if state ~= nil then
+            IsLoggingCombat = state and true or false
+        end
         if self.db.profile.enabledebug then
             self:Print("LoggingCombat called with: " .. tostring(state))
         end
@@ -268,9 +285,7 @@ function SimpleCombatLogger:CheckEnableLogging(event)
             self:StartLogging()
         end
     elseif instanceType == "raid" then
-        -- 3.3.5: treat all raids as either normal or heroic, but most servers
-        -- encode 10/25 + normal/heroic via difficultyID; for simplicity:
-        if self.db.profile.raid.normal or self.db.profile.raid.heroic then
+        if RaidDifficultyEnabled(self.db.profile.raid, difficultyID) then
             self:StartLogging()
         end
     elseif instanceType == "pvp" then
@@ -322,9 +337,9 @@ function SimpleCombatLogger:CheckDisableLogging(event)
             self:StopLogging()
         end
     elseif instanceType == "raid" then
-        if not (self.db.profile.raid.normal or self.db.profile.raid.heroic) then
+        if not RaidDifficultyEnabled(self.db.profile.raid, difficultyID) then
             if self.db.profile.enabledebug then
-                self:Print("Raid logging disabled, stopping logging")
+                self:Print("Raid difficulty disabled, stopping logging")
             end
 
             self:StopLogging()
