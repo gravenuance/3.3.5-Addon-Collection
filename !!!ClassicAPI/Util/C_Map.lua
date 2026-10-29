@@ -34,8 +34,24 @@ function C_Map.GetBestMapForUnit(UnitToken)
 		return nil
 	end
 
+	-- SetMapToCurrentZone moves the shared map, so restore it when the player is browsing the world map.
+	local Browsing = _G.WorldMapFrame and _G.WorldMapFrame:IsShown()
+	local ViewedMap, ViewedLevel
+	if ( Browsing ) then
+		ViewedMap, ViewedLevel = GetCurrentMapAreaID(), GetCurrentMapDungeonLevel()
+	end
+
 	SetMapToCurrentZone()
-	return GetCurrentMapAreaID()
+	local CurrentMap = GetCurrentMapAreaID()
+
+	if ( Browsing ) then
+		SetMapByID(ViewedMap)
+		if ( ViewedLevel and ViewedLevel > 0 ) then
+			SetDungeonMapLevel(ViewedLevel)
+		end
+	end
+
+	return CurrentMap
 end
 
 -- Global
