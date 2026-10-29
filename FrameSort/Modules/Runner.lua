@@ -49,9 +49,11 @@ local function OnUpdate()
         return
     end
 
-    M:Run(runProvider)
+    -- clear the request first so an error in the run doesn't repeat every frame
+    local provider = runProvider
     run = false
     runProvider = nil
+    M:Run(provider)
 end
 
 local function OnEvent(_, event)

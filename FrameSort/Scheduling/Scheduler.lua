@@ -12,16 +12,18 @@ local combatEndCallbacks = {}
 local combatEndKeyedCallbacks = {}
 
 local function OnCombatEnded()
-    for _, callback in ipairs(combatEndCallbacks) do
-        callback()
+    -- swap the queues out first so a failing callback is reported once and doesn't block the rest
+    local callbacks, keyedCallbacks = combatEndCallbacks, combatEndKeyedCallbacks
+    combatEndCallbacks, combatEndKeyedCallbacks = {}, {}
+    local errorHandler = geterrorhandler()
+
+    for _, callback in ipairs(callbacks) do
+        xpcall(callback, errorHandler)
     end
 
-    for _, callback in pairs(combatEndKeyedCallbacks) do
-        callback()
+    for _, callback in pairs(keyedCallbacks) do
+        xpcall(callback, errorHandler)
     end
-
-    combatEndCallbacks = wow.wipe(combatEndCallbacks)
-    combatEndKeyedCallbacks = wow.wipe(combatEndKeyedCallbacks)
 end
 
 local function OnEnteringWorld()
