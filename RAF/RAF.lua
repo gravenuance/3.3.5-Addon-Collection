@@ -28,32 +28,11 @@ local TRINKET_SPELLS         = {
     [59752] = true, -- Every Man for Himself (human racial)
 }
 
-local CC_BUTTON_SPELLS       = {
-    [51724] = "DISORIENT",      -- Sap
-    [1776]  = "DISORIENT",      -- Gouge
-    [2094]  = "FEAR",           -- Blind
-    [8643]  = "CONTROLLEDSTUN", -- Kidney Shot
-    [1833]  = "OPENERSTUN",     -- Cheap Shot
-    [44572] = "CONTROLLEDSTUN", -- Deep Freeze
-    [10308] = "CONTROLLEDSTUN", -- Hammer of Justice
-    [12809] = "CONTROLLEDSTUN", -- Concussion Blow
-    [46968] = "CONTROLLEDSTUN", -- Shockwave
-    [20252] = "CONTROLLEDSTUN", -- Intercept
-    [5246]  = "FEAR",           -- Intimidating Shout
-    [51722] = "DISARM",         -- Dismantle
-    [676]   = "DISARM",         -- Disarm
-    [1330]  = "SILENCE",        -- Garrote
-    [20066] = "DISORIENT",      -- Repentance
-    [61780] = "DISORIENT",      -- Polymorph
-    [10326] = "FEAR",           -- Turn Evil
-    [10890] = "FEAR",           -- Psychic Scream
-    [7922]  = "CHARGE",         -- Charge
-    [605]   = "MINDCONTROL",    -- Mind Control
-}
+-- Counts and timers live in the shared library; RAF keeps only what it draws.
+local DR                     = LibStub("LibDRTracker-1.0")
 
--- DR state: DR_STATES[unitGUID][category] = { resetAt = time, stacks = n, buttonIndex = i }
+-- DR_STATES[unitGUID][category] = { buttonIndex = i, lastIcon = texture }
 local DR_STATES              = {}
-local DR_RESET_TIME          = 18 -- Wrath DR reset
 
 -- TRINKET_STATE[unitGUID] = time the trinket was used; outlives the unit token so the cooldown
 -- can be restored when an enemy reappears after stealth or line of sight.
@@ -210,12 +189,11 @@ local function GetDRColor(stacks)
     end
 end
 
--- DR state: DR_STATES[unitGUID][category] = { resetAt, stacks, buttonIndex, lastStart, drStart }
 local function GetOrCreateDRState(unitGUID, category)
     DR_STATES[unitGUID] = DR_STATES[unitGUID] or {}
     local state         = DR_STATES[unitGUID][category]
     if not state then
-        state = { resetAt = 0, stacks = 0, buttonIndex = nil, lastStart = 0, drStart = 0 }
+        state = {}
         DR_STATES[unitGUID][category] = state
     end
     return state
@@ -557,9 +535,7 @@ end
 
 -- Scratch state shared by every aura scan so UNIT_AURA allocates no tables or closures.
 local scan             = {}
-local activeCategories = {}
-local categoryData     = {}
-local fallbackData     = {}
+local activeCategories = {} -- category -> icon of the CC currently on the unit
 
 local function ScanAura(icon, duration, expirationTime, spellId)
     if not spellId then return end
@@ -577,46 +553,22 @@ local function ScanAura(icon, duration, expirationTime, spellId)
         end
     end
 
-    local category = CC_BUTTON_SPELLS[spellId]
+    local category = DR:GetCategory(spellId)
     if not category or not expirationTime or not duration or duration <= 0 then
         return
     end
 
-    local state = GetOrCreateDRState(scan.guid, category)
-    local start = expirationTime - duration
-
-    if now > state.resetAt then
-        state.stacks    = 0
-        state.drStart   = 0
-        state.lastStart = 0
-        state.lastIcon  = nil
-    end
-
-    if start > (state.lastStart or 0) + 0.001 or start < (state.lastStart or 0) - 0.5 then
-        state.stacks    = math.min((state.stacks or 0) + 1, 3)
-        state.lastStart = start
-        state.drStart   = now
-        state.resetAt   = now + DR_RESET_TIME
-    else
-        state.resetAt = now + DR_RESET_TIME
-    end
-
-    state.lastIcon = icon
-
-    local data = categoryData[category]
-    if not data then
-        data = {}
-        categoryData[category] = data
-    end
-    data.icon     = icon
-    data.start    = start
-    data.duration = duration
-    data.stacks   = state.stacks
-    activeCategories[category] = data
+    GetOrCreateDRState(scan.guid, category).lastIcon = icon
+    activeCategories[category] = icon
 end
 
 local usedButtons = {}
 local NO_DR       = {}
+
+local function StopIconTimer(btn)
+    btn.endTime = nil
+    btn:SetScript("OnUpdate", nil)
+end
 
 local function RAF_UpdateSpellsIconForUnitFrame(f)
     if not f.spellsIcon or not f.unit then return end
@@ -651,17 +603,11 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
         end
 
         for category, state in pairs(drForUnit) do
-            if state.resetAt and now < state.resetAt then
-                local data = activeCategories[category]
-                if not data and state.lastIcon then
-                    data = fallbackData
-                    data.icon     = state.lastIcon
-                    data.start    = state.lastStart or 0
-                    data.duration = DR_RESET_TIME
-                    data.stacks   = state.stacks or 0
-                end
+            local stacks, resetAt, active = DR:GetState(unitGUID, category, now)
+            if stacks then
+                local icon = activeCategories[category] or state.lastIcon
 
-                if data then
+                if icon then
                     local idx = state.buttonIndex
                     if not (idx and f.ccButtons[idx]) then
                         idx = nil
@@ -678,28 +624,28 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
                         local btn        = f.ccButtons[idx]
                         usedButtons[idx] = true
 
-                        btn.icon:SetTexture(data.icon or "")
+                        btn.icon:SetTexture(icon)
                         btn:Show()
 
-                        local drDuration = math.max(0, state.resetAt - state.drStart)
-                        local remaining  = math.max(0, state.resetAt - now)
-                        if drDuration > 0 and remaining > 0 and state.drStart > 0 then
-                            btn.cd:SetCooldown(state.drStart, drDuration)
-                            StartIconTimer(btn, drDuration, state.resetAt)
-                        else
+                        -- The reset only starts counting once the CC is gone.
+                        if active then
                             btn.cd:SetCooldown(0, 0)
+                            StopIconTimer(btn)
                             if btn.durationText then
-                                btn.durationText:SetText("")
+                                btn.durationText:SetText(DR.RESET_TIME)
                             end
+                        else
+                            btn.cd:SetCooldown(resetAt - DR.RESET_TIME, DR.RESET_TIME)
+                            StartIconTimer(btn, DR.RESET_TIME, resetAt)
                         end
                         if btn.durationText then
-                            local r, g, b = GetDRColor(state.stacks or 0)
+                            local r, g, b = GetDRColor(stacks)
                             btn.durationText:SetTextColor(r, g, b)
                         end
                     end
                 end
             else
-                state.buttonIndex = nil
+                drForUnit[category] = nil
             end
         end
 
@@ -736,6 +682,15 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
         f.spellsIcon.lastStart = nil
     end
 end
+
+-- A removal can reach the combat log after UNIT_AURA, so redraw when the DR itself changes.
+DR:RegisterCallback(addonName, function(guid)
+    for _, f in ipairs(root.frames) do
+        if f.unit and UnitGUID(f.unit) == guid then
+            RAF_UpdateSpellsIconForUnitFrame(f)
+        end
+    end
+end)
 
 -------------------------------------------------------
 -- Updating frames

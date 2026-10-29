@@ -6,4 +6,8 @@
 ## DefaultState: Enabled
 ## SavedVariables: RAFDB
 
+Libs\LibStub\LibStub.lua
+Libs\LibDRTracker-1.0\LibDRTracker-1.0.lua
+Libs\LibDRTracker-1.0\Spells.lua
+
 RAF.lua

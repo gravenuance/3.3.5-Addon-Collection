@@ -56,7 +56,7 @@ local function deepEqual(a, b)
   return true
 end
 
-local t = {}
+local t = { root = root }
 local passed, failed = 0, 0
 local currentSpec = ""
 
