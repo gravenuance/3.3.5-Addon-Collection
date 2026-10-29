@@ -182,41 +182,54 @@ local function CompareRole(leftToken, rightToken, isArena)
     return CompareGroup(leftToken, rightToken, isArena)
 end
 
----Returns true if the specified token is ordered after the mid point of player units.
----Pet units are ignored.
----@param token string
+---Precomputes what CompareMiddle needs from the sorted units, so it is done once per sort rather than once per comparison.
+---Pet units and units that don't exist are ignored.
 ---@param sortedUnits table
----@return boolean
-local function CompareMiddle(token, sortedUnits)
-    local notPets = fsEnumerable
-        :From(sortedUnits)
-        :Where(function(unit)
-            return not fsUnit:IsPet(unit) and wow.UnitExists(unit)
-        end)
-        :ToTable()
+---@return table middle the unit => index lookup (among non-pet existing units) and the mid point.
+local function BuildMiddle(sortedUnits)
+    local indexes = {}
+    local count = 0
 
+    for _, unit in ipairs(sortedUnits) do
+        if not fsUnit:IsPet(unit) and wow.UnitExists(unit) then
+            count = count + 1
+
+            -- the first occurrence wins, same as Enumerable:IndexOf()
+            if not indexes[unit] then
+                indexes[unit] = count
+            end
+        end
+    end
+
+    return { indexes = indexes, mid = math.floor(count / 2) }
+end
+
+---Returns true if the specified token is ordered after the mid point of player units.
+---@param token string
+---@param middle table from BuildMiddle
+---@return boolean
+local function CompareMiddle(token, middle)
     -- index of the token we are comparing with
-    local index = fsEnumerable:From(notPets):IndexOf(token)
+    local index = middle.indexes[token]
 
     -- most likely a non-existant unit
     if not index then
         return false
     end
 
-    local mid = math.floor(#notPets / 2)
-    return index > mid
+    return index > middle.mid
 end
 
 ---Returns true if the left token should be ordered before the right token.
----preSortedUnits is required if playerSortMode == Middle.
+---middle (from BuildMiddle) is required if playerSortMode == Middle.
 ---@param leftToken string
 ---@param rightToken string
 ---@param playerSortMode? string
 ---@param groupSortMode? string
 ---@param reverse boolean?
----@param preSortedUnits table?
+---@param middle table?
 ---@return boolean
-local function Compare(leftToken, rightToken, playerSortMode, groupSortMode, reverse, preSortedUnits)
+local function Compare(leftToken, rightToken, playerSortMode, groupSortMode, reverse, middle)
     -- if not in a group, we might be in test mode
     if wow.IsInGroup() then
         if not wow.UnitExists(leftToken) then
@@ -241,7 +254,7 @@ local function Compare(leftToken, rightToken, playerSortMode, groupSortMode, rev
         local leftTokenParent = leftToken == "pet" and "player" or string.gsub(leftToken, "pet", "")
         local rightTokenParent = rightToken == "pet" and "player" or string.gsub(rightToken, "pet", "")
 
-        return Compare(leftTokenParent, rightTokenParent, playerSortMode, groupSortMode, reverse, preSortedUnits)
+        return Compare(leftTokenParent, rightTokenParent, playerSortMode, groupSortMode, reverse, middle)
     end
 
     if playerSortMode and playerSortMode ~= "" then
@@ -249,8 +262,8 @@ local function Compare(leftToken, rightToken, playerSortMode, groupSortMode, rev
             if playerSortMode == fsConfig.PlayerSortMode.Hidden then
                 return false
             elseif playerSortMode == fsConfig.PlayerSortMode.Middle then
-                assert(preSortedUnits ~= nil)
-                return CompareMiddle(rightToken, preSortedUnits)
+                assert(middle ~= nil)
+                return CompareMiddle(rightToken, middle)
             else
                 return playerSortMode == fsConfig.PlayerSortMode.Top
             end
@@ -260,8 +273,8 @@ local function Compare(leftToken, rightToken, playerSortMode, groupSortMode, rev
             if playerSortMode == fsConfig.PlayerSortMode.Hidden then
                 return true
             elseif playerSortMode == fsConfig.PlayerSortMode.Middle then
-                assert(preSortedUnits ~= nil)
-                return not CompareMiddle(leftToken, preSortedUnits)
+                assert(middle ~= nil)
+                return not CompareMiddle(leftToken, middle)
             else
                 return playerSortMode == fsConfig.PlayerSortMode.Bottom
             end
@@ -354,8 +367,10 @@ function M:SortFunction(units)
         end)
         :ToTable()
 
+    local middle = BuildMiddle(units)
+
     return function(x, y)
-        return Compare(x, y, playerSortMode, groupSortMode, reverse, units)
+        return Compare(x, y, playerSortMode, groupSortMode, reverse, middle)
     end
 end
 

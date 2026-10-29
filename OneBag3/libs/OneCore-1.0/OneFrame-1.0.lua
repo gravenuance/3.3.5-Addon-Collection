@@ -96,7 +96,7 @@ function FrameHelpers:CustomizeFrame(db)
 	local c = db.colors.background or { r=1, g=1, b=1, a=1 }
 	self:SetBackdropColor(c.r, c.g, c.b, c.a)
 	
-	self:SetClampedToScreen(db.behavior.clamped or true)
+	self:SetClampedToScreen(db.behavior.clamped ~= false)
 	
 	local strata = self.stratas[db.behavior.strata or 2]
 
@@ -231,7 +231,7 @@ function OneFrame:CreateMainFrame(framename, moneyType)
 				slot:EnableMouse(true)
 			end
         end
-        self.isMoving = false
+        frame.isMoving = false
 	end)
 	
 	local sidebarButton = CreateFrame('CheckButton', nil, frame)

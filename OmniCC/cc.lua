@@ -62,12 +62,14 @@ local function ResyncCooldown(timer)
 		start, duration, enable = GetItemCooldown(parent.itemID)
 	end
 
-	if start and duration then
-		if enable == 1 and start > 0 and duration >= OmniCC:GetMinDuration() then
-			timer:Start(start, duration)
-		else
-			timer:Stop()
-		end
+	-- No cooldown source we know how to query (bag, pet, custom buttons, ...):
+	-- leave the running timer alone instead of stopping it.
+	if not (start and duration) then
+		return
+	end
+
+	if enable == 1 and start > 0 and duration >= OmniCC:GetMinDuration() then
+		timer:Start(start, duration)
 	else
 		timer:Stop()
 	end

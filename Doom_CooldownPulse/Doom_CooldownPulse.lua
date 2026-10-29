@@ -397,9 +397,12 @@ function DCP:CreateOptionsFrame()
             DCPT:SetTexture("Interface\\Icons\\Spell_Nature_Earthbind")
             DCP:EnableMouse(true)
         else
-            DCP:SetAlpha(0)
+            -- Drop the preview icon and resume cooldown polling, which was
+            -- stopped while unlocked (it stops itself again when idle).
+            ResetAnimationState()
             self:SetText("Unlock")
             DCP:EnableMouse(false)
+            DCP:SetScript("OnUpdate", OnUpdate)
         end
     end)
 

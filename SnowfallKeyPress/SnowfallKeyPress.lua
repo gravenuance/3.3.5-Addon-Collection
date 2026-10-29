@@ -6,17 +6,20 @@ local CreateFrame             = CreateFrame
 local hooksecurefunc          = hooksecurefunc
 local SetOverrideBindingClick = SetOverrideBindingClick
 local InCombatLockdown        = InCombatLockdown
+local ClearOverrideBindings   = ClearOverrideBindings
 local ipairs                  = ipairs
 local pairs                   = pairs
 local string_match            = string.match
 local string_gsub             = string.gsub
 local strfind                 = string.find
 
-local SnowfallKeyPressSV      = SnowfallKeyPressSV or {}
-_G.SnowfallKeyPressSV         = SnowfallKeyPressSV
+-- Placeholder until ADDON_LOADED: the saved variables are loaded after this
+-- file runs and replace the global, so the real table is bound there.
+local SnowfallKeyPressSV      = {}
 
 local overrideFrame           = CreateFrame("Frame", "SnowfallKeyPress_OverrideFrame")
 local hook                    = true
+local pendingUpdate           = false -- a rebuild was requested during combat
 
 -------------------------------------------------
 -- Allowed types and templates
@@ -292,10 +295,18 @@ end
 
 local function updateBindings()
   if InCombatLockdown() then
+    pendingUpdate = true
+    overrideFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     return
   end
 
-  if not SnowfallKeyPressSV.enable then
+  -- Drop the overrides from the previous pass so unbound or de-listed keys
+  -- stop being accelerated, and so disabling the addon restores the defaults.
+  hook = false
+  ClearOverrideBindings(overrideFrame)
+  hook = true
+
+  if SnowfallKeyPressSV.enable == false then
     return
   end
 
@@ -447,22 +458,54 @@ end)
 -- Core event hook to rebuild on binding changes
 -------------------------------------------------
 
-overrideFrame:SetScript("OnEvent", function(_, event)
-  if event == "UPDATE_BINDINGS" and hook then
+-- Bind the loaded saved variables, fill in missing settings, refresh the
+-- options UI and do the initial binding scan.
+local function onAddonLoaded()
+  SnowfallKeyPressSV = _G.SnowfallKeyPressSV or {}
+  _G.SnowfallKeyPressSV = SnowfallKeyPressSV
+
+  -- Top-level only: a user-edited key list must not be topped up from defaults.
+  for k, v in pairs(_G.SnowfallKeyPressDefaults or {}) do
+    if SnowfallKeyPressSV[k] == nil then
+      if type(v) == "table" then
+        local copy = {}
+        for kk, vv in pairs(v) do
+          copy[kk] = vv
+        end
+        v = copy
+      end
+      SnowfallKeyPressSV[k] = v
+    end
+  end
+
+  configFrame.enableButton:SetChecked(SnowfallKeyPressSV.enable ~= false)
+  configFrame.macrosButton:SetChecked(SnowfallKeyPressSV.enableMacros == true)
+  configFrame.clicksButton:SetChecked(SnowfallKeyPressSV.enableClicks == true)
+  configFrame.wheelButton:SetChecked(SnowfallKeyPressSV.enableMousewheel == true)
+  configFrame.keysEdit:SetText(serializeKeys())
+
+  if SnowfallKeyPressSV.enable ~= false then
+    overrideFrame:RegisterEvent("UPDATE_BINDINGS")
+    updateBindings()
+  end
+end
+
+overrideFrame:SetScript("OnEvent", function(self, event, arg1)
+  if event == "ADDON_LOADED" then
+    if arg1 == "SnowfallKeyPress" then
+      self:UnregisterEvent("ADDON_LOADED")
+      onAddonLoaded()
+    end
+  elseif event == "PLAYER_REGEN_ENABLED" then
+    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    if pendingUpdate then
+      pendingUpdate = false
+      updateBindings()
+    end
+  elseif event == "UPDATE_BINDINGS" and hook then
     updateBindings()
   end
 end)
-
--- Initialize checkbox state and initial binding scan
-configFrame.enableButton:SetChecked(SnowfallKeyPressSV.enable ~= false)
-configFrame.macrosButton:SetChecked(SnowfallKeyPressSV.enableMacros == true)
-configFrame.clicksButton:SetChecked(SnowfallKeyPressSV.enableClicks == true)
-configFrame.wheelButton:SetChecked(SnowfallKeyPressSV.enableMousewheel == true)
-configFrame.keysEdit:SetText(serializeKeys())
-
-if SnowfallKeyPressSV.enable ~= false then
-  overrideFrame:RegisterEvent("UPDATE_BINDINGS")
-  updateBindings()
-end
+overrideFrame:RegisterEvent("ADDON_LOADED")
 
 InterfaceOptions_AddCategory(configFrame)

@@ -7,8 +7,9 @@
 --
 -- This watches event flow while the player is in combat. If nothing has
 -- come through for STALL_THRESHOLD seconds despite active combat, it
--- toggles LoggingCombat off/on, which forces the client to re-subscribe
--- to the server's combat log stream and clears the stall.
+-- calls CombatLogClearEntries(), which empties the client's combat log buffer
+-- and clears the stall. (It deliberately does not toggle LoggingCombat: that
+-- would leave the player's combat-log-to-file setting switched on.)
 
 local CHECK_INTERVAL  = 1  -- seconds between stall checks
 local STALL_THRESHOLD = 8  -- seconds without a CLEU event, while in combat, before treating it as hung
@@ -48,6 +49,5 @@ fixFrame:SetScript("OnUpdate", function(self, delta)
     -- Actively in combat, but nothing has come through in a while: reset the log.
     lastResetTime = now
     lastEventTime = now
-    LoggingCombat(false)
-    LoggingCombat(true)
+    CombatLogClearEntries()
 end)
