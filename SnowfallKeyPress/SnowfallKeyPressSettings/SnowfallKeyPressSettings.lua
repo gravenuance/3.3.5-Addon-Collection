@@ -2,9 +2,6 @@
 
 local _G = _G
 
--- SavedVariables root
-SnowfallKeyPressSV = SnowfallKeyPressSV or {}
-
 -- Default settings
 local DEFAULT_SETTINGS = {
   enable           = true,
@@ -28,26 +25,7 @@ local DEFAULT_SETTINGS = {
   },
 }
 
-local function CopyDefaults(dst, src)
-  if not dst then return src end
-  for k, v in pairs(src) do
-    if dst[k] == nil then
-      if type(v) == "table" then
-        local t = {}
-        for kk, vv in pairs(v) do
-          t[kk] = vv
-        end
-        dst[k] = t
-      else
-        dst[k] = v
-      end
-    elseif type(v) == "table" and type(dst[k]) == "table" then
-      CopyDefaults(dst[k], v)
-    end
-  end
-  return dst
-end
-
--- Merge defaults into saved variables on load
-SnowfallKeyPressSV = CopyDefaults(SnowfallKeyPressSV, DEFAULT_SETTINGS)
-_G.SnowfallKeyPressSV = SnowfallKeyPressSV
+-- The saved variables are not loaded yet while this file runs (they arrive just
+-- before ADDON_LOADED), so only publish the defaults; SnowfallKeyPress merges
+-- them into the loaded SnowfallKeyPressSV on ADDON_LOADED.
+_G.SnowfallKeyPressDefaults = DEFAULT_SETTINGS
