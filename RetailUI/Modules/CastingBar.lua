@@ -12,7 +12,7 @@ local UnitExists             = UnitExists
 local UnitGUID               = UnitGUID
 local UIFrameFadeOut         = UIFrameFadeOut
 local UIFrameFadeRemoveFrame = UIFrameFadeRemoveFrame
-local min, abs               = min, abs
+local min, abs, floor        = min, abs, math.floor
 local pairs                  = pairs
 local _G                     = _G
 
@@ -121,6 +121,15 @@ end
 -------------------------------------------------------
 -- OnUpdate driver (hardened)
 -------------------------------------------------------
+local function GetSpark(statusBar)
+    local spark = statusBar.sparkTextureEx
+    if spark == nil then
+        spark = _G[statusBar:GetName() .. "Spark"] or false
+        statusBar.sparkTextureEx = spark
+    end
+    return spark
+end
+
 local function CastingBarFrame_OnUpdate(self, elapsed)
     local currentTime = GetTime()
     local value, remainingTime = 0, 0
@@ -181,13 +190,19 @@ local function CastingBarFrame_OnUpdate(self, elapsed)
         local rt  = abs(remainingTime or 0)
         local dur = duration or 0
         if self.castingTime and dur > 0 then
-            self.castingTime:SetText(string.format("%.1f/%.2f", rt, dur))
+            -- The text only changes in 0.1 s steps; skip the format otherwise
+            local tenths = floor(rt * 10 + 0.5)
+            if tenths ~= self.castTenthsEx or dur ~= self.castDurEx then
+                self.castTenthsEx, self.castDurEx = tenths, dur
+                self.castingTime:SetText(string.format("%.1f/%.2f", rt, dur))
+            end
         elseif self.castingTime then
+            self.castTenthsEx = nil
             self.castingTime:SetText("")
         end
 
         -- Move spark safely
-        local sparkTexture = _G[self:GetName() .. "Spark"]
+        local sparkTexture = GetSpark(self)
         if sparkTexture then
             sparkTexture:ClearAllPoints()
             sparkTexture:SetPoint("CENTER", self, "LEFT", value * (self:GetWidth() or 0), 0)
@@ -199,7 +214,7 @@ local function CastingBarFrame_OnUpdate(self, elapsed)
             self.fadeOutEx = true
         end
     elseif self.fadeOutEx then
-        local sparkTexture = _G[self:GetName() .. "Spark"]
+        local sparkTexture = GetSpark(self)
         if sparkTexture then
             sparkTexture:Hide()
         end
@@ -396,13 +411,14 @@ function Module:UNIT_SPELLCAST_START(eventName, unit)
     local statusBar = ResolveStatusBar(unit)
     if not statusBar then return end
 
-    local spell, rank, displayName, icon, startTime, endTime
+    local spell, rank, displayName, icon, startTime, endTime, _, notInterruptible
     if eventName == "UNIT_SPELLCAST_START" then
-        spell, rank, displayName, icon, startTime, endTime = UnitCastingInfo(unit)
+        -- castID sits between isTradeSkill and notInterruptible
+        spell, rank, displayName, icon, startTime, endTime, _, _, notInterruptible = UnitCastingInfo(unit)
         statusBar.castingEx, statusBar.channelingEx = true, false
         SetAtlasTexture(statusBar:GetStatusBarTexture(), "CastingBar-StatusBar-Casting")
     else
-        spell, rank, displayName, icon, startTime, endTime = UnitChannelInfo(unit)
+        spell, rank, displayName, icon, startTime, endTime, _, notInterruptible = UnitChannelInfo(unit)
         statusBar.castingEx, statusBar.channelingEx = false, true
         SetAtlasTexture(statusBar:GetStatusBarTexture(), "CastingBar-StatusBar-Channeling")
     end
@@ -429,11 +445,19 @@ function Module:UNIT_SPELLCAST_START(eventName, unit)
 
     statusBar.startTime = startTime / 1000
     statusBar.endTime   = endTime / 1000
+    statusBar.selfInterrupt = false
+    statusBar.castTenthsEx = nil
+
+    local borderShieldTexture = _G[statusBar:GetName() .. "BorderShield"]
+    if notInterruptible then
+        borderShieldTexture:Show()
+    else
+        borderShieldTexture:Hide()
+    end
 
     UIFrameFadeRemoveFrame(statusBar)
 
-    local sparkTexture = _G[statusBar:GetName() .. "Spark"]
-    sparkTexture:Show()
+    GetSpark(statusBar):Show()
 
     statusBar:SetAlpha(1.0)
     statusBar:Show()
@@ -543,22 +567,22 @@ local function ResolveInterruptibleBar(unit)
     end
 end
 
-function Module:UNIT_SPELLCAST_INTERRUPTIBLE(unit)
-    local statusBar, guidUnit = ResolveInterruptibleBar(unit)
-    if not statusBar then return end
-    if guidUnit and statusBar.unit ~= UnitGUID(guidUnit) then return end
-
-    local borderShieldTexture = _G[statusBar:GetName() .. "BorderShield"]
-    borderShieldTexture:Show()
-end
-
-function Module:UNIT_SPELLCAST_NOT_INTERRUPTIBLE(unit)
+function Module:UNIT_SPELLCAST_INTERRUPTIBLE(eventName, unit)
     local statusBar, guidUnit = ResolveInterruptibleBar(unit)
     if not statusBar then return end
     if guidUnit and statusBar.unit ~= UnitGUID(guidUnit) then return end
 
     local borderShieldTexture = _G[statusBar:GetName() .. "BorderShield"]
     borderShieldTexture:Hide()
+end
+
+function Module:UNIT_SPELLCAST_NOT_INTERRUPTIBLE(eventName, unit)
+    local statusBar, guidUnit = ResolveInterruptibleBar(unit)
+    if not statusBar then return end
+    if guidUnit and statusBar.unit ~= UnitGUID(guidUnit) then return end
+
+    local borderShieldTexture = _G[statusBar:GetName() .. "BorderShield"]
+    borderShieldTexture:Show()
 end
 
 -------------------------------------------------------

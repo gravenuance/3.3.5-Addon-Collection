@@ -664,7 +664,7 @@ local function ReplaceBlizzardTargetFrame(anchorFrame, targetFrame, isBoss)
         healthText:SetText(curHealth .. "/" .. curHealth)
 
         local manaText = _G[self:GetName() .. "TextureFrameManaBarText"]
-        local curMana = UnitPower("player", Mana)
+        local curMana = UnitPower("player", 0)
         manaText:SetText(curMana .. "/" .. curMana)
 
         local healthBar = _G[self:GetName() .. "HealthBar"]
@@ -683,7 +683,11 @@ local function ReplaceBlizzardTargetFrame(anchorFrame, targetFrame, isBoss)
     end
 
     targetFrame.HideTest = function(self)
-        self:Hide()
+        if UnitExists(self.unit) then
+            TargetFrame_Update(self)
+        else
+            self:Hide()
+        end
     end
 end
 
@@ -1104,10 +1108,22 @@ end
 -- Player frame animations and roles
 -------------------------------------------------
 
-local function PlayerFrame_SequenceFinished(self)
+-- Secure unit frames can't be moved in combat; these are replayed on PLAYER_REGEN_ENABLED
+local pendingWorldEntry   = false
+local pendingPlayerAnchor = false
+
+local function AnchorPlayerFrame()
     local playerFrame = PlayerFrame
     playerFrame:ClearAllPoints()
     playerFrame:SetPoint("LEFT", Module.playerFrame, "LEFT", 0, 0)
+end
+
+local function PlayerFrame_SequenceFinished(self)
+    if InCombatLockdown() then
+        pendingPlayerAnchor = true
+        return
+    end
+    AnchorPlayerFrame()
 end
 
 local function PlayerFrame_AnimPos(self, fraction)
@@ -1122,12 +1138,16 @@ local PlayerFrameAnimTable = {
 }
 
 local function PlayerFrame_AnimateOut(self)
+    -- Starting the animation from addon code would have it move the protected frame in combat
+    if InCombatLockdown() then return end
     SetUpAnimation(PlayerFrame, PlayerFrameAnimTable, PlayerFrame_AnimFinished, false)
 end
 
 local function PlayerFrame_UpdateArt(self)
     if self.animFinished and self.inSeat and self.inSequence then
-        SetUpAnimation(PlayerFrame, PlayerFrameAnimTable, PlayerFrame_SequenceFinished, true)
+        if not InCombatLockdown() then
+            SetUpAnimation(PlayerFrame, PlayerFrameAnimTable, PlayerFrame_SequenceFinished, true)
+        end
 
         if UnitHasVehicleUI("player") then
             PlayerFrame_ToVehicleArt(self, UnitVehicleSkin("player"))
@@ -1421,6 +1441,7 @@ local isHooked = false
 
 function Module:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self:RegisterEvent("PLAYER_REGEN_ENABLED")
     self:RegisterEvent("RUNE_TYPE_UPDATE")
 
     if not isHooked then
@@ -1463,6 +1484,7 @@ end
 
 function Module:OnDisable()
     self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
     self:UnregisterEvent("RUNE_TYPE_UPDATE")
 
     if self:IsHooked(PlayerFrame, "OnUpdate") then
@@ -1543,7 +1565,24 @@ local function HidePlayerStrip()
     end
 end
 
+function Module:PLAYER_REGEN_ENABLED()
+    if pendingWorldEntry then
+        pendingWorldEntry = false
+        self:PLAYER_ENTERING_WORLD()
+    end
+    if pendingPlayerAnchor then
+        pendingPlayerAnchor = false
+        AnchorPlayerFrame()
+    end
+end
+
 function Module:PLAYER_ENTERING_WORLD()
+    -- Repositioning/scaling the secure unit frames in combat (e.g. /reload mid-fight) is blocked
+    if InCombatLockdown() then
+        pendingWorldEntry = true
+        return
+    end
+
     RemoveBlizzardFrames()
 
     ReplaceBlizzardPlayerFrame(self.playerFrame)

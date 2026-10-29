@@ -23,7 +23,7 @@ SlashCmdList["ZOOMGC"] = function(msg)
     elseif msg == "status" then
         print(("|cff00ff00[GC]|r reports are currently %s."):format(ZoomGCDB.silent and "silenced" or "enabled"))
         if metrics.load.loadTime then
-            print(("|cff00ff00[GC]|r Last login: %.2f kb collected in %d passes, %.2fs login phase, %.2f kb on first world enter.")
+            print(("|cff00ff00[GC]|r Last login: %.2f mb collected in %d passes, %.2fs login phase, %.2f mb on first world enter.")
                 :format(metrics.load.gc_kb / 1024, metrics.load.gc_calls or 0, metrics.load.loadTime, metrics.world.gc_kb / 1024))
         else
             print("|cff00ff00[GC]|r No metrics recorded yet this session.")
@@ -75,7 +75,7 @@ frame:SetScript("OnEvent", function(self, event)
         if not ZoomGCDB.silent then
             ChatFrame1:AddMessage((
                 "|cff00ff00[GC]|r |cffffff00Load|r: " ..
-                "|cff00ffff%2.2f|r kb collected in |cffffd000%d|r passes, " ..
+                "|cff00ffff%2.2f|r mb collected in |cffffd000%d|r passes, " ..
                 "login phase took |cff00ffff%2.2f|r seconds"
             ):format(metrics.load.gc_kb / 1024, metrics.load.gc_calls or 0, metrics.load.loadTime))
         end
@@ -90,7 +90,7 @@ frame:SetScript("OnEvent", function(self, event)
         if not ZoomGCDB.silent then
             ChatFrame1:AddMessage((
                 "|cff00ff00[GC]|r |cffffff00World|r: " ..
-                "|cff00ffff%2.2f|r kb collected on first enter, " ..
+                "|cff00ffff%2.2f|r mb collected on first enter, " ..
                 "current footprint |cff00ffff%2.2f|r mb"
             ):format(metrics.world.gc_kb / 1024, footprintKB / 1024))
         end

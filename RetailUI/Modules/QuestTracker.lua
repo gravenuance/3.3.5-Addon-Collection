@@ -8,9 +8,6 @@ local WatchFrame                     = WatchFrame
 local WatchFrameLines                = WatchFrameLines
 local WatchFrameHeader               = WatchFrameHeader
 local WatchFrameCollapseExpandButton = WatchFrameCollapseExpandButton
-local WATCHFRAME_OBJECTIVEHANDLERS   = WATCHFRAME_OBJECTIVEHANDLERS
-local WATCHFRAME_INITIAL_OFFSET      = WATCHFRAME_INITIAL_OFFSET
-local WATCHFRAME_MAXLINEWIDTH        = WATCHFRAME_MAXLINEWIDTH
 local WATCHFRAME_EXPANDEDWIDTH       = WATCHFRAME_EXPANDEDWIDTH
 
 local RUI                            = LibStub("AceAddon-3.0"):GetAddon("RetailUI")
@@ -35,21 +32,8 @@ local function WatchFrame_Collapse(self)
 end
 
 local function WatchFrame_Update(self)
-    local pixelsUsed      = 0
-    local totalOffset     = WATCHFRAME_INITIAL_OFFSET
-    local lineFrame       = WatchFrameLines
-    local maxHeight       = WatchFrame:GetTop() - WatchFrame:GetBottom()
-    local maxFrameWidth   = WATCHFRAME_MAXLINEWIDTH
-
-    local maxLineWidth
-    local numObjectives
-    local totalObjectives = 0
-
-    for i = 1, #WATCHFRAME_OBJECTIVEHANDLERS do
-        pixelsUsed, maxLineWidth, numObjectives =
-            WATCHFRAME_OBJECTIVEHANDLERS[i](lineFrame, totalOffset, maxHeight, maxFrameWidth)
-        totalObjectives = totalObjectives + numObjectives
-    end
+    -- Blizzard's update already laid out the objectives; re-running the handlers here would overlap them
+    local totalObjectives = GetNumQuestWatches() + GetNumTrackedAchievements()
 
     local watchFrame = WatchFrame
     watchFrame.background = watchFrame.background or watchFrame:CreateTexture(nil, "BACKGROUND")

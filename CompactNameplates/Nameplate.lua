@@ -13,6 +13,10 @@ local TOTEM_SIZE           = 32
 -- just a periodic safety net against a missed event, not the primary path.
 local AURA_SAFETY_REFRESH_INTERVAL = 2
 
+-- Seconds between full unit-token scans per plate (also the retry delay for
+-- class lookups that came up empty).
+local RESOLVE_INTERVAL = 0.25
+
 local DEBUFF_COLOR         = { r = 1, g = 0, b = 0 }   -- fallback for debuffs
 local BUFF_COLOR           = { r = 0, g = 0.8, b = 0 } -- generic buffs
 local DISPEL_COLORS        = {
@@ -153,6 +157,7 @@ local function SetGUID(nameplate, unitGUID)
     if not unitGUID then return end
     nameplatesByGUID[unitGUID] = nameplate
     nameplate.unitGUID = unitGUID
+    nameplate._noClassUntil = nil
 end
 
 local function ClearGUID(nameplate)
@@ -161,6 +166,7 @@ local function ClearGUID(nameplate)
     nameplatesByGUID[guid] = nil
     nameplate.unitGUID = nil
     nameplate._cachedUnitID = nil
+    nameplate._noClassUntil = nil
 end
 
 function Nameplate:Get(unitGUID)
@@ -241,6 +247,15 @@ local function BuildUnitCandidates()
     UNIT_CANDIDATES = candidates
     return candidates
 end
+
+-- The list depends on group makeup and instance type
+local candidatesInvalidator = CreateFrame("Frame")
+candidatesInvalidator:RegisterEvent("PARTY_MEMBERS_CHANGED")
+candidatesInvalidator:RegisterEvent("RAID_ROSTER_UPDATE")
+candidatesInvalidator:RegisterEvent("PLAYER_ENTERING_WORLD")
+candidatesInvalidator:SetScript("OnEvent", function()
+    UNIT_CANDIDATES = nil
+end)
 
 -- Cheap re-validation of a nameplate's last-known unit token before paying
 -- for a full BuildUnitCandidates() scan (which, in a 40-man raid, is ~180
@@ -387,7 +402,14 @@ local function SetClassColor(nameplate)
     local class = info and info.class
 
     if not class then
-        class = ResolveGUID(nameplate)
+        -- NPCs never get a class, so don't rescan every candidate each frame
+        local now = GetTime()
+        if not nameplate._noClassUntil or now >= nameplate._noClassUntil then
+            class = ResolveGUID(nameplate)
+            if not class then
+                nameplate._noClassUntil = now + RESOLVE_INTERVAL
+            end
+        end
         if not class then
             local default = GetDefaultFrame(nameplate)
             local r, g, b = default.healthBar:GetStatusBarColor()
@@ -871,6 +893,8 @@ local function OnShow(nameplate)
 end
 
 local function OnHide(nameplate)
+    nameplate._resolvedUnitID = nil
+    nameplate._resolveElapsed = nil
     ClearGUID(nameplate)
     nameplate._lastGUID = nil
     Nameplate:UpdateAuras(nameplate)
@@ -882,7 +906,15 @@ local function OnUpdate(nameplate, elapsed)
     nameplate.raidIcon:SetTexCoord(default.raidIcon:GetTexCoord())
     nameplate.raidIcon:SetShown(default.raidIcon:IsShown())
 
-    local unitID = ResolveOrFallbackGUID(nameplate)
+    -- Re-resolve on a timer, or at once if the cached token no longer matches
+    local unitID = nameplate._resolvedUnitID
+    nameplate._resolveElapsed = (nameplate._resolveElapsed or RESOLVE_INTERVAL) + (elapsed or 0)
+    if nameplate._resolveElapsed >= RESOLVE_INTERVAL
+        or (unitID and UnitGUID(unitID) ~= nameplate.unitGUID) then
+        nameplate._resolveElapsed = 0
+        unitID = ResolveOrFallbackGUID(nameplate)
+        nameplate._resolvedUnitID = unitID
+    end
 
     local showPlate = true
     if nameplate.totemIcon then
@@ -992,7 +1024,7 @@ function Nameplate:Create(default)
         local duration   = frame.duration
         local icon       = frame.icon
         local durationBG = frame:CreateTexture(nil, "BACKGROUND", nil, -1)
-        durationBG:SetColorTexture(0, 0, 0, 0.2)
+        durationBG:SetTexture(0, 0, 0, 0.2)
         durationBG:SetPoint("TOPLEFT", icon, "TOPLEFT", -pad, pad)
         durationBG:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", pad, -pad)
         frame.durationBG = durationBG
@@ -1018,7 +1050,7 @@ function Nameplate:Create(default)
         local duration   = frame.duration
         local icon       = frame.icon
         local durationBG = frame:CreateTexture(nil, "BACKGROUND", nil, -1)
-        durationBG:SetColorTexture(0, 0, 0, 0.2)
+        durationBG:SetTexture(0, 0, 0, 0.2)
         durationBG:SetPoint("TOPLEFT", icon, "TOPLEFT", -pad, pad)
         durationBG:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", pad, -pad)
         frame.durationBG = durationBG

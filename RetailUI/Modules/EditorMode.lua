@@ -80,6 +80,11 @@ function Module:Show()
 end
 
 function Module:Hide()
+    if InCombatLockdown() then
+        self:Printf(DEFAULT_CHAT_FRAME, "Cannot close settings while in combat")
+        return
+    end
+
     self.editorGridFrame:Hide()
 
     ForEachModule(function(m)

@@ -16,11 +16,20 @@ end
 
 local function MakeScaleSetter(widgetName)
     return function(_, input)
+        if InCombatLockdown() then
+            print("Cannot change frame scale while in combat")
+            return
+        end
         SaveUIFrameScale(input, widgetName)
     end
 end
 
 local function LoadAllDefaults()
+    if InCombatLockdown() then
+        print("Cannot load default settings while in combat")
+        return
+    end
+
     local UnitFrameModule    = RUI:GetModule("UnitFrame")
     local CastingBarModule   = RUI:GetModule("CastingBar")
     local ActionBarModule    = RUI:GetModule("ActionBar")

@@ -32,6 +32,14 @@ local function ToggleAllBuffButtons(show)
     end
 end
 
+-- Blizzard's update re-shows every buff button, so keep a collapsed row hidden
+local function BuffFrame_Update()
+    local toggleButton = Module.buffFrame and Module.buffFrame.toggleButton
+    if toggleButton and not toggleButton.toggle then
+        ToggleAllBuffButtons(false)
+    end
+end
+
 local function ReplaceBlizzardFrame(frame)
     -- Anchor the real buff/debuff icon row to our draggable frame so
     -- Editor Mode repositioning actually moves the buffs, not just the
@@ -128,7 +136,9 @@ function Module:OnEnable()
     self:RegisterEvent("UNIT_ENTERED_VEHICLE")
     self:RegisterEvent("UNIT_EXITED_VEHICLE")
 
-    self.buffFrame = CreateUIFrame(BuffFrame:GetWidth(), BuffFrame:GetHeight(), "BuffFrame")
+    self:SecureHook("BuffFrame_Update", BuffFrame_Update)
+
+    self.buffFrame =CreateUIFrame(BuffFrame:GetWidth(), BuffFrame:GetHeight(), "BuffFrame")
     self.debuffFrame = CreateUIFrame(BuffFrame:GetWidth(), BuffFrame:GetHeight(), "DebuffFrame")
 end
 
@@ -137,6 +147,8 @@ function Module:OnDisable()
     self:UnregisterEvent("UNIT_AURA")
     self:UnregisterEvent("UNIT_ENTERED_VEHICLE")
     self:UnregisterEvent("UNIT_EXITED_VEHICLE")
+
+    self:Unhook("BuffFrame_Update", BuffFrame_Update)
 end
 
 function Module:PLAYER_ENTERING_WORLD()

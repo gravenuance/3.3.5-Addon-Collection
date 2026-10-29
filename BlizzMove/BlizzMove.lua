@@ -195,15 +195,23 @@ local function SetMoveHandler(frameToMove, handler)
     handler:SetScript("OnDragStart", OnDragStart)
     handler:SetScript("OnDragStop", OnDragStop)
 
+    -- HookScript stacks, and this runs again for shared frames and when re-unlocking
     -- override frame position according to settings when shown
-    frameToMove:HookScript("OnShow", OnShow)
+    if not frameToMove.blizzMoveShowHooked then
+        frameToMove.blizzMoveShowHooked = true
+        frameToMove:HookScript("OnShow", OnShow)
+    end
 
-    -- hook OnMouseUp
-    handler:HookScript("OnMouseUp", OnMouseUp)
+    if not handler.blizzMoveHooked then
+        handler.blizzMoveHooked = true
 
-    -- hook Scroll for setting scale
-    handler:EnableMouseWheel(true)
-    handler:HookScript("OnMouseWheel", OnMouseWheel)
+        -- hook OnMouseUp
+        handler:HookScript("OnMouseUp", OnMouseUp)
+
+        -- hook Scroll for setting scale
+        handler:EnableMouseWheel(true)
+        handler:HookScript("OnMouseWheel", OnMouseWheel)
+    end
 end
 
 -------------------------------------------------
@@ -261,12 +269,27 @@ end
 -- Event handler
 -------------------------------------------------
 
+-- Blizzard LoD addons, set up once loaded
+local lodSetup = {
+    Blizzard_InspectUI       = function() SetMoveHandler(InspectFrame) end,
+    Blizzard_GuildBankUI     = function() SetMoveHandler(GuildBankFrame) end,
+    Blizzard_TradeSkillUI    = function() SetMoveHandler(TradeSkillFrame) end,
+    Blizzard_ItemSocketingUI = function() SetMoveHandler(ItemSocketingFrame) end,
+    Blizzard_BarbershopUI    = function() SetMoveHandler(BarberShopFrame) end,
+    Blizzard_GlyphUI         = function() SetMoveHandler(SpellBookFrame, GlyphFrame) end,
+    Blizzard_MacroUI         = function() SetMoveHandler(MacroFrame) end,
+    Blizzard_AchievementUI   = function() SetMoveHandler(AchievementFrame, AchievementFrameHeader) end,
+    Blizzard_TalentUI        = function() SetMoveHandler(PlayerTalentFrame) end,
+    Blizzard_Calendar        = function() SetMoveHandler(CalendarFrame) end,
+    Blizzard_TrainerUI       = function() SetMoveHandler(ClassTrainerFrame) end,
+    Blizzard_BindingUI       = function() SetMoveHandler(KeyBindingFrame) end,
+    Blizzard_AuctionUI       = function() SetMoveHandler(AuctionFrame) end,
+}
+
 local function OnEvent(self, event, arg1)
     Debug(event, arg1)
 
     if event == "PLAYER_ENTERING_WORLD" then
-        self:RegisterEvent("ADDON_LOADED") -- for Blizzard LoD addons
-
         db = BlizzMoveDB or defaultDB
         BlizzMoveDB = db
 
@@ -281,7 +304,6 @@ local function OnEvent(self, event, arg1)
         SetMoveHandler(QuestLogFrame)
         SetMoveHandler(FriendsFrame)
         SetMoveHandler(PVPParentFrame)
-        SetMoveHandler(LFGParentFrame)
         SetMoveHandler(GameMenuFrame)
         SetMoveHandler(GossipFrame)
         SetMoveHandler(DressUpFrame)
@@ -305,42 +327,26 @@ local function OnEvent(self, event, arg1)
             end
         end)
 
+        -- LoD addons that loaded before the database existed
+        for lodName, setup in pairs(lodSetup) do
+            if IsAddOnLoaded(lodName) then
+                setup()
+            end
+        end
+
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
 
     elseif event == "ADDON_LOADED" then
-        -- Blizzard LoD addons
-        if arg1 == "Blizzard_InspectUI" then
-            SetMoveHandler(InspectFrame)
-        elseif arg1 == "Blizzard_GuildBankUI" then
-            SetMoveHandler(GuildBankFrame)
-        elseif arg1 == "Blizzard_TradeSkillUI" then
-            SetMoveHandler(TradeSkillFrame)
-        elseif arg1 == "Blizzard_ItemSocketingUI" then
-            SetMoveHandler(ItemSocketingFrame)
-        elseif arg1 == "Blizzard_BarbershopUI" then
-            SetMoveHandler(BarberShopFrame)
-        elseif arg1 == "Blizzard_GlyphUI" then
-            SetMoveHandler(SpellBookFrame, GlyphFrame)
-        elseif arg1 == "Blizzard_MacroUI" then
-            SetMoveHandler(MacroFrame)
-        elseif arg1 == "Blizzard_AchievementUI" then
-            SetMoveHandler(AchievementFrame, AchievementFrameHeader)
-        elseif arg1 == "Blizzard_TalentUI" then
-            SetMoveHandler(PlayerTalentFrame)
-        elseif arg1 == "Blizzard_Calendar" then
-            SetMoveHandler(CalendarFrame)
-        elseif arg1 == "Blizzard_TrainerUI" then
-            SetMoveHandler(ClassTrainerFrame)
-        elseif arg1 == "Blizzard_BindingUI" then
-            SetMoveHandler(KeyBindingFrame)
-        elseif arg1 == "Blizzard_AuctionUI" then
-            SetMoveHandler(AuctionFrame)
+        local setup = lodSetup[arg1]
+        if setup and db then
+            setup()
         end
     end
 end
 
 frame:SetScript("OnEvent", OnEvent)
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("ADDON_LOADED") -- before PLAYER_ENTERING_WORLD the db is missing; that handler catches those
 
 -------------------------------------------------
 -- User API

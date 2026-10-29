@@ -50,17 +50,20 @@ end
 local function NameplateDepthSort(a, b)
     local da, db = a:GetEffectiveDepth(), b:GetEffectiveDepth()
     if da == db then
-        return tostring(a) < tostring(b)
+        return a.sortId < b.sortId
     end
     return da > db
 end
 
-local function OnUpdate(self, elapsed)
-    -- Hijack default nameplates
-    local currentNumChildren = WorldFrame:GetNumChildren()
-    for i = 1, currentNumChildren do
-        local child = select(i, WorldFrame:GetChildren())
-        if IsNameplate(child) and not child._compactNameplatesHooked then
+-- Hijack default nameplates
+local function HijackNameplates()
+    local children = { WorldFrame:GetChildren() }
+    for i = 1, #children do
+        local child = children[i]
+        if not child._compactNameplatesHooked and IsNameplate(child) then
+            -- Set before Create so a failure can't make every frame retry this plate
+            child._compactNameplatesHooked = true
+
             -- Save references for easier access
             child.healthBar, child.castBar = child:GetChildren()
             child.threatGlow, child.healthBarBorder, child.castBarBorder,
@@ -84,23 +87,49 @@ local function OnUpdate(self, elapsed)
             child.eliteIcon:SetTexture(nil)
 
             -- Attach custom nameplate to Blizzard's default nameplates
-            nameplates[#nameplates + 1] = addon.Nameplate:Create(child)
+            local nameplate = addon.Nameplate:Create(child)
+            nameplates[#nameplates + 1] = nameplate
+            nameplate.sortId = #nameplates
         end
     end
+end
+
+local SORT_INTERVAL = 0.1
+
+local numChildren = 0
+local sortElapsed = 0
+
+local function OnUpdate(self, elapsed)
+    -- New plates only appear as new WorldFrame children
+    local currentNumChildren = WorldFrame:GetNumChildren()
+    if currentNumChildren ~= numChildren then
+        HijackNameplates()
+        numChildren = currentNumChildren
+        sortElapsed = SORT_INTERVAL -- lay out new plates right away
+    end
+
+    sortElapsed = sortElapsed + elapsed
+    if sortElapsed < SORT_INTERVAL then return end
+    sortElapsed = 0
 
     -- Sort nameplates by depth
     table.sort(nameplates, NameplateDepthSort)
 
     local base = 10
     local targetBonus = 100 -- small, fixed
+    local scale = UIParent:GetScale()
 
     for i, nameplate in ipairs(nameplates) do
         local level = base + i * FRAME_LEVEL_SPACING
         if addon.Nameplate:IsTarget(nameplate) then
             level = level + targetBonus
         end
-        nameplate:SetFrameLevel(level)
-        nameplate:SetScale(UIParent:GetScale())
+        if nameplate:GetFrameLevel() ~= level then
+            nameplate:SetFrameLevel(level)
+        end
+        if nameplate:GetScale() ~= scale then
+            nameplate:SetScale(scale)
+        end
     end
 end
 
