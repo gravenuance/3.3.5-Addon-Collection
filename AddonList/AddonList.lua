@@ -306,11 +306,11 @@ function AddonList_IsAddOnLoadOnDemand(index)
 	local lod = false
 	if ( IsAddOnLoadOnDemand(index) ) then
 
-		local deps = GetAddOnDependencies(index)
+		local deps = { GetAddOnDependencies(index) }
 		local okay = true;
-		for i = 1, select('#', deps) do
-			local dep = select(i, deps)
-			if ( dep and not IsAddOnLoaded(select(i, deps)) ) then
+		for i = 1, #deps do
+			local dep = deps[i]
+			if ( dep and not IsAddOnLoaded(dep) ) then
 				okay = false;
 				break;
 			end
