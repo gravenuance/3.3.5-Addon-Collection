@@ -55,6 +55,11 @@ local CC_BUTTON_SPELLS       = {
 local DR_STATES              = {}
 local DR_RESET_TIME          = 18 -- Wrath DR reset
 
+-- TRINKET_STATE[unitGUID] = time the trinket was used; outlives the unit token so the cooldown
+-- can be restored when an enemy reappears after stealth or line of sight.
+local TRINKET_STATE          = {}
+local TRINKET_COOLDOWN       = 120
+
 local spells                 = {
     [46924] = true, -- Bladestorm
     [23920] = true, -- Spell Reflection
@@ -719,8 +724,31 @@ end
 -- Updating frames
 -------------------------------------------------------
 
+local function RestoreTrinketCooldown(f)
+    local trinket = f.trinket
+    local guid    = UnitGUID(f.unit)
+    local usedAt  = guid and TRINKET_STATE[guid]
+    if not usedAt then return end
+
+    local endTime = usedAt + TRINKET_COOLDOWN
+    if endTime <= GetTime() then
+        TRINKET_STATE[guid]      = nil
+        trinket.cooldownStart    = nil
+        return
+    end
+    if trinket.cooldownStart == usedAt then return end
+
+    trinket.cooldownStart = usedAt
+    trinket.cd:SetCooldown(usedAt, TRINKET_COOLDOWN)
+    StartIconTimer(trinket, TRINKET_COOLDOWN, endTime)
+    if trinket.durationText then
+        trinket.durationText:SetTextColor(1, 1, 1)
+    end
+end
+
 local function ClearUnitIcons(f)
     if f.trinket then
+        f.trinket.cooldownStart = nil
         f.trinket.cd:SetCooldown(0, 0)
         f.trinket:Hide()
         if f.trinket.durationText then
@@ -813,6 +841,7 @@ local function UpdateUnitFrame(f)
         local icon = GetDefaultTrinketIconForUnit(unit)
         f.trinket.icon:SetTexture(icon or DEFAULT_TRINKET_ICON)
         f.trinket:Show() -- NEW: always visible when unit exists
+        RestoreTrinketCooldown(f)
     end
 
     RAF_UpdateSpellsIconForUnitFrame(f)
@@ -913,6 +942,7 @@ function RAF:RefreshVisibility()
 
         for _, f in ipairs(root.frames) do
             if f.trinket then
+                f.trinket.cooldownStart = nil -- UpdateUnitFrame restores it from TRINKET_STATE
                 f.trinket.cd:SetCooldown(0, 0)
                 -- do not force Show() here; UpdateUnitFrame handles per-unit visibility
             end
@@ -951,6 +981,7 @@ function RAF:RefreshVisibility()
 
         -- NEW: clear DR state between arenas
         wipe(DR_STATES)
+        wipe(TRINKET_STATE)
 
         self:SetVisible(false)
     end
@@ -969,11 +1000,15 @@ local function RAF_OnCombatLogEvent(...)
     if eventType ~= "SPELL_CAST_SUCCESS" then return end
     if not TRINKET_SPELLS[spellID] then return end
 
+    local now = GetTime()
+    TRINKET_STATE[srcGUID] = now
+
     for _, f in ipairs(root.frames) do
         if f.unit and UnitGUID(f.unit) == srcGUID and f.trinket then
             f.trinket:Show()
-            f.trinket.cd:SetCooldown(GetTime(), 120)
-            StartIconTimer(f.trinket, 120)
+            f.trinket.cooldownStart = now
+            f.trinket.cd:SetCooldown(now, TRINKET_COOLDOWN)
+            StartIconTimer(f.trinket, TRINKET_COOLDOWN)
             if f.trinket.durationText then
                 f.trinket.durationText:SetTextColor(1, 1, 1)
             end
