@@ -9,8 +9,15 @@ if ( not C_Timer ) then
 		ObjPool[#ObjPool + 1] = Timer
 	end
 
+	local PendingCallback, PendingRef
+	local function RunPending()
+		PendingCallback(PendingRef)
+	end
+
 	local function Caller(Self)
-		Self.Callback(Self.Ref)
+		-- A callback error goes to the error handler but must not skip the bookkeeping below.
+		PendingCallback, PendingRef = Self.Callback, Self.Ref
+		xpcall(RunPending, geterrorhandler())
 
 		if ( Self.Callback ) then
 			local Iteration = Self.Iteration
