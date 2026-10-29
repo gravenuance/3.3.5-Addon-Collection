@@ -44,8 +44,12 @@ function C_Item.GetItemInfoInstant(ItemInfo)
 	local _, Link, _, _, _, ItemType, ItemSubType, _, EquipLoc, Texture = C_Item.GetItemInfo(ItemInfo)
 	local ID = ItemInfo
 
-	if ( Link and Type(ID) == "string" ) then
-		ID = Number(Match(Link, "item:(%d+):"))
+	if ( Type(ID) == "string" ) then
+		ID = Number(Match(Link or ID, "item:(%d+)")) or ID
+	end
+
+	if ( not Texture and Type(ID) == "number" ) then
+		Texture = C_Item.GetItemIconByID(ID)
 	end
 
 	return ID, ItemType, ItemSubType, EquipLoc, Texture

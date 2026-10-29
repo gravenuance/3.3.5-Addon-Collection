@@ -56,7 +56,7 @@ do
             if not name then
                 break;
             end
-            if func(name, rank, icon, count, auraType, duration, expire, caster, steal, consolidate, id) then
+            if func(name, icon, count, auraType, duration, expire, caster, steal, consolidate, id) then
                 break;
             end
             index = index + 1;

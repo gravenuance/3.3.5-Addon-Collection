@@ -78,6 +78,12 @@ local function Method_GetCooldownDuration(Self)
 	return Duration or 0
 end
 
+local function Method_ClearCooldown(Self)
+	Self.___Start = nil
+	Self.___Duration = nil
+	Self:Hide()
+end
+
 local function Method_SetCooldownDuration(Self, Duration, Modrate)
 	Self:SetCooldown(GetTime(), Duration, Modrate)
 end
@@ -340,7 +346,7 @@ CheckButton.ClearAndSetPoint = Method_ClearAndSetPoint
 
 -- COOLDOWN
 hooksecurefunc(Cooldown, "SetCooldown", Hook_SetCooldown)
-Cooldown.Clear = Cooldown.Hide
+Cooldown.Clear = Method_ClearCooldown
 Cooldown.SetHideCountdownNumbers = Method_SetHideCountdownNumbers
 Cooldown.SetDrawBling = Private.Void
 Cooldown.SetDrawSwipe = Method_SetDrawSwipe
