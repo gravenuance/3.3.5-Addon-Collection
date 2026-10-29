@@ -5,7 +5,7 @@ local player_spells_list
 -- Tracks the specs of other players based on spec spells
 local special_spells_list
 local specs_by_guid_list
--- Track all or target/focus
+-- Track every hostile caster, or only the target and focus
 local all
 
 -- Number of buttons to spawn per bar
@@ -598,7 +598,7 @@ local function zb_combat_log(timestamp, combat_event, src_guid, src_name, src_fl
         print(spell_name)
         print(combat_event)
     end
-    if is_disabled or (not all and src_guid == (player_guid or UnitGUID("target"))) then
+    if is_disabled then
         return
     end
     if special_spells_list[spell_id] then
@@ -632,6 +632,9 @@ local function zb_combat_log(timestamp, combat_event, src_guid, src_name, src_fl
         end
     elseif spells_list[spell_id] then  
         if bit.band(src_flags, COMBATLOG_OBJECT_REACTION_HOSTILE) > 0 then
+            if not all and src_guid ~= UnitGUID("target") and src_guid ~= UnitGUID("focus") then
+                return
+            end
             length_of_hostile_bar = zb_event_type(combat_event, hostile_bar, length_of_hostile_bar, spell_id, spells_list, src_guid)
         elseif zb_is_in_party(src_guid) then
             length_of_party_bar = zb_event_type(combat_event, party_bar, length_of_party_bar, spell_id, spells_list, src_guid)
@@ -760,6 +763,7 @@ local function zb_commands(sub_string)
         is_disabled = not is_disabled
     elseif sub_string == "all" then
         all = not all
+        print(all and "ZakatziBar: tracking all hostiles." or "ZakatziBar: tracking target and focus only.")
     else
         print("Available commands: Debug, clear, disable, all.")
     end
