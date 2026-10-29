@@ -4,13 +4,8 @@ function GetTextureInfo(obj)
         local assetType = "Atlas";
 
         if not assetName then
-            assetName = obj:GetTextureFilePath();
+            assetName = obj:GetTexture();
             assetType = "File";
-        end
-
-        if not assetName then
-            assetName = obj:GetTextureFileID();
-            assetType = "FileID";
         end
 
         if not assetName then
@@ -74,34 +69,11 @@ end
 
 function ClearClampedTextureRotation(texture)
     if (texture.rotationDegrees) then
-        SetClampedTextureRotation(0);
+        SetClampedTextureRotation(texture, 0);
         texture.origTexCoords = nil;
         texture.origWidth = nil;
         texture.origHeight = nil;
-    end
-end
-
-
-function GetTexCoordsByGrid(xOffset, yOffset, textureWidth, textureHeight, gridWidth, gridHeight)
-    local widthPerGrid = gridWidth/textureWidth;
-    local heightPerGrid = gridHeight/textureHeight;
-    return (xOffset-1)*widthPerGrid, (xOffset)*widthPerGrid, (yOffset-1)*heightPerGrid, (yOffset)*heightPerGrid;
-end
-
-function GetTexCoordsForRole(role)
-    local textureHeight, textureWidth = 256, 256;
-    local roleHeight, roleWidth = 67, 67;
-
-    if ( role == "GUIDE" ) then
-        return GetTexCoordsByGrid(1, 1, textureWidth, textureHeight, roleWidth, roleHeight);
-    elseif ( role == "TANK" ) then
-        return GetTexCoordsByGrid(1, 2, textureWidth, textureHeight, roleWidth, roleHeight);
-    elseif ( role == "HEALER" ) then
-        return GetTexCoordsByGrid(2, 1, textureWidth, textureHeight, roleWidth, roleHeight);
-    elseif ( role == "DAMAGER" ) then
-        return GetTexCoordsByGrid(2, 2, textureWidth, textureHeight, roleWidth, roleHeight);
-    else
-        error("Unknown role: "..tostring(role));
+        texture.rotationDegrees = nil;
     end
 end
 
