@@ -83,26 +83,14 @@ local function UpdateDispelIcon(frame)
     end
 end
 
-local function DispelIcon_OnEvent(frame, event, unit)
-    if unit and unit ~= frame.unit and unit ~= frame.displayedUnit then
-        return
-    end
-
-    if event == "UNIT_AURA" or event == "UNIT_FLAGS" or event == "PLAYER_TALENT_UPDATE" then
-        UpdateDispelIcon(frame)
-    end
-end
-
-hooksecurefunc("CompactUnitFrame_OnLoad", function(frame)
-    -- Only for frames that actually represent units
+-- The unit is assigned after OnLoad and CompactUnitFrame_SetUnit replaces the OnEvent script,
+-- so create the icon lazily and refresh it from the aura and full-update paths instead.
+local function RefreshDispelIcon(frame)
     if not frame or (not frame.unit and not frame.displayedUnit) then return end
 
     CreateDispelIcon(frame)
-    frame:HookScript("OnEvent", DispelIcon_OnEvent)
-end)
+    UpdateDispelIcon(frame)
+end
 
-hooksecurefunc("CompactUnitFrame_UpdateAll", function(frame)
-    if frame and frame.DispelIcon then
-        UpdateDispelIcon(frame)
-    end
-end)
+hooksecurefunc("CompactUnitFrame_UpdateAll", RefreshDispelIcon)
+hooksecurefunc("CompactUnitFrame_UpdateAuras", RefreshDispelIcon)

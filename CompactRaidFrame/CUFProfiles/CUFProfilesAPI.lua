@@ -191,7 +191,7 @@ function DeleteRaidProfile(profile)
 end
 
 function SaveRaidProfileCopy(profile)
-	if ( not profile or (PROFILE_COPY and not RaidProfileHasUnsavedChanges()) ) then
+	if ( not profile or not PROFILES ) then
 		return;
 	end
 

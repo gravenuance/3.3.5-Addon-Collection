@@ -4,6 +4,6 @@
 ## Version: 1.0.0
 ## Author: Zulban
 ## DefaultState: Enabled
-## SavedVariables: RAFDB, RAF
+## SavedVariables: RAFDB
 
 RAF.lua

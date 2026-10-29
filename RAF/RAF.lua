@@ -2,13 +2,14 @@ local addonName, RAF         = ...
 
 RAF                          = RAF or {}
 _G[addonName]                = RAF
-local FONT_PATH_BOLD         = "Interface\\AddOns\\CompactNameplates\\Media\\font-bold.ttf"
+local FONT_PATH_BOLD         = "Interface\\AddOns\\" .. addonName .. "\\Media\\font-bold.ttf"
 local FONT_FLAG              = "OUTLINE"
 -------------------------------------------------------
 -- Saved variables
 -------------------------------------------------------
 
-RAFDB                        = RAFDB or {
+-- RAFDB is loaded after this file runs, so defaults are merged in ADDON_LOADED.
+local DB_DEFAULTS            = {
     x      = 0,
     y      = 0,
     locked = false,
@@ -53,6 +54,11 @@ local CC_BUTTON_SPELLS       = {
 -- DR state: DR_STATES[unitGUID][category] = { resetAt = time, stacks = n, buttonIndex = i }
 local DR_STATES              = {}
 local DR_RESET_TIME          = 18 -- Wrath DR reset
+
+-- TRINKET_STATE[unitGUID] = time the trinket was used; outlives the unit token so the cooldown
+-- can be restored when an enemy reappears after stealth or line of sight.
+local TRINKET_STATE          = {}
+local TRINKET_COOLDOWN       = 120
 
 local spells                 = {
     [46924] = true, -- Bladestorm
@@ -160,6 +166,13 @@ local function GetDefaultTrinketIconForUnit(unit)
     end
 end
 
+-- SetFont fails (returns nil) when the file is missing; fall back to the client font so SetText never errors.
+local function ApplyFont(fontString, size)
+    if not fontString:SetFont(FONT_PATH_BOLD, size, FONT_FLAG) then
+        fontString:SetFont(STANDARD_TEXT_FONT, size, FONT_FLAG)
+    end
+end
+
 local function IsInArena()
     local inInstance, instanceType = IsInInstance()
     return inInstance and instanceType == "arena"
@@ -208,6 +221,34 @@ local function GetOrCreateDRState(unitGUID, category)
     return state
 end
 
+local function IconTimer_OnUpdate(self)
+    if not self.endTime then
+        self:SetScript("OnUpdate", nil)
+        if self.durationText then
+            self.durationText:SetText("")
+        end
+        return
+    end
+
+    local remaining = self.endTime - GetTime()
+    if remaining <= 0 then
+        self.endTime = nil
+        if self.durationText then
+            self.durationText:SetText("")
+        end
+        self:SetScript("OnUpdate", nil)
+        return
+    end
+
+    local t
+    if remaining > 1 then
+        t = math.floor(remaining + 0.5)
+    else
+        t = 1
+    end
+    self.durationText:SetText(t)
+end
+
 local function StartIconTimer(frame, duration, absoluteEndTime)
     if not frame.durationText or not duration or duration <= 0 then return end
 
@@ -218,33 +259,7 @@ local function StartIconTimer(frame, duration, absoluteEndTime)
         frame.endTime = GetTime() + duration
     end
 
-    frame:SetScript("OnUpdate", function(self, elapsed)
-        if not self.endTime then
-            self:SetScript("OnUpdate", nil)
-            if self.durationText then
-                self.durationText:SetText("")
-            end
-            return
-        end
-
-        local remaining = self.endTime - GetTime()
-        if remaining <= 0 then
-            self.endTime = nil
-            if self.durationText then
-                self.durationText:SetText("")
-            end
-            self:SetScript("OnUpdate", nil)
-            return
-        end
-
-        local t
-        if remaining > 1 then
-            t = math.floor(remaining + 0.5)
-        else
-            t = 1
-        end
-        self.durationText:SetText(t)
-    end)
+    frame:SetScript("OnUpdate", IconTimer_OnUpdate)
 end
 
 -------------------------------------------------------
@@ -255,7 +270,7 @@ RAF.frame = RAF.frame or CreateFrame("Frame", addonName .. "Root", UIParent)
 local root = RAF.frame
 
 root:SetSize(frameWidth, frameHeight * #ARENA_UNITS + 8)
-root:SetPoint("CENTER", UIParent, "CENTER", RAFDB.x, RAFDB.y)
+root:SetPoint("CENTER", UIParent, "CENTER", DB_DEFAULTS.x, DB_DEFAULTS.y)
 root:SetMovable(true)
 root:SetClampedToScreen(true)
 root:EnableMouse(true)
@@ -298,11 +313,7 @@ overlay.tex = tex
 tex:SetAllPoints(overlay)
 tex:SetColorTexture(0, 0, 0, 0.3)
 
-if RAFDB.locked then
-    overlay:Hide()
-else
-    overlay:Show()
-end
+overlay:Show()
 
 overlay:EnableMouse(true)
 overlay:SetScript("OnMouseDown", function(self, button)
@@ -337,6 +348,9 @@ local function CreateArenaFrame(parent, index, unit)
         f:SetAttribute("type1", "target")
         f:RegisterForClicks("AnyUp")
         f:EnableMouse(true)
+        -- The secure unit watch shows/hides the frame with its unit, including in combat when addon code cannot.
+        RegisterUnitWatch(f)
+        f.unitWatched = true
     end
 
     if index == 1 then
@@ -386,7 +400,7 @@ local function CreateArenaFrame(parent, index, unit)
     label:SetTextColor(1, 1, 1)
 
     local font, size, flags = label:GetFont()
-    label:SetFont(FONT_PATH_BOLD, size * 1.4, FONT_FLAG)
+    ApplyFont(label, size * 1.4)
 
     f.labelFrame     = labelFrame
     f.label          = label
@@ -433,7 +447,7 @@ local function CreateArenaFrame(parent, index, unit)
 
     local tDur = tTextFrame:CreateFontString(nil, "OVERLAY")
     tDur:SetPoint("CENTER", tTextFrame, "CENTER", 0, 0)
-    tDur:SetFont(FONT_PATH_BOLD, 14, FONT_FLAG)
+    ApplyFont(tDur, 14)
     tDur:SetText("")
 
     trinket.durationText = tDur
@@ -470,7 +484,7 @@ local function CreateArenaFrame(parent, index, unit)
 
     local sDur = sTextFrame:CreateFontString(nil, "OVERLAY")
     sDur:SetPoint("CENTER", sTextFrame, "CENTER", 0, 0)
-    sDur:SetFont(FONT_PATH_BOLD, 14, FONT_FLAG)
+    ApplyFont(sDur, 14)
     sDur:SetText("")
 
     spellsIcon.durationText = sDur
@@ -514,7 +528,7 @@ local function CreateArenaFrame(parent, index, unit)
 
         local dtext = textFrame:CreateFontString(nil, "OVERLAY")
         dtext:SetPoint("CENTER", textFrame, "CENTER", 0, 0)
-        dtext:SetFont(FONT_PATH_BOLD, 14, FONT_FLAG)
+        ApplyFont(dtext, 14)
         dtext:SetText("")
 
         btn.durationText = dtext
@@ -531,13 +545,78 @@ local function CreateArenaFrame(parent, index, unit)
 end
 
 root.frames = {}
+local FRAME_BY_UNIT = {}
 for i, unit in ipairs(ARENA_UNITS) do
     root.frames[i] = CreateArenaFrame(root, i, unit)
+    FRAME_BY_UNIT[unit] = root.frames[i]
 end
 
 -------------------------------------------------------
 -- Spells icon & DR logic
 -------------------------------------------------------
+
+-- Scratch state shared by every aura scan so UNIT_AURA allocates no tables or closures.
+local scan             = {}
+local activeCategories = {}
+local categoryData     = {}
+local fallbackData     = {}
+
+local function ScanAura(icon, duration, expirationTime, spellId)
+    if not spellId then return end
+
+    local now = scan.now
+
+    if spells[spellId] and duration and duration > 0 and expirationTime then
+        local remaining = expirationTime - now
+        if remaining > 0 and (not scan.bestRemaining or remaining > scan.bestRemaining) then
+            scan.bestSpellId = spellId
+            scan.bestIcon = icon
+            scan.bestDuration = duration
+            scan.bestStart = expirationTime - duration
+            scan.bestRemaining = remaining
+        end
+    end
+
+    local category = CC_BUTTON_SPELLS[spellId]
+    if not category or not expirationTime or not duration or duration <= 0 then
+        return
+    end
+
+    local state = GetOrCreateDRState(scan.guid, category)
+    local start = expirationTime - duration
+
+    if now > state.resetAt then
+        state.stacks    = 0
+        state.drStart   = 0
+        state.lastStart = 0
+        state.lastIcon  = nil
+    end
+
+    if start > (state.lastStart or 0) + 0.001 or start < (state.lastStart or 0) - 0.5 then
+        state.stacks    = math.min((state.stacks or 0) + 1, 3)
+        state.lastStart = start
+        state.drStart   = now
+        state.resetAt   = now + DR_RESET_TIME
+    else
+        state.resetAt = now + DR_RESET_TIME
+    end
+
+    state.lastIcon = icon
+
+    local data = categoryData[category]
+    if not data then
+        data = {}
+        categoryData[category] = data
+    end
+    data.icon     = icon
+    data.start    = start
+    data.duration = duration
+    data.stacks   = state.stacks
+    activeCategories[category] = data
+end
+
+local usedButtons = {}
+local NO_DR       = {}
 
 local function RAF_UpdateSpellsIconForUnitFrame(f)
     if not f.spellsIcon or not f.unit then return end
@@ -548,76 +627,26 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
 
     local now = GetTime()
 
-    local activeCategories = {}
-    local bestSpellId, bestIcon, bestStart, bestDuration, bestRemaining
-
-    local function handleAura(icon, duration, expirationTime, spellId)
-        if not spellId then return end
-
-        local now = GetTime() -- moved here
-
-        if spells[spellId] and duration and duration > 0 and expirationTime then
-            local remaining = expirationTime - now
-            if remaining > 0 and (not bestRemaining or remaining > bestRemaining) then
-                bestSpellId = spellId
-                bestIcon = icon
-                bestDuration = duration
-                bestStart = expirationTime - duration
-                bestRemaining = remaining
-            end
-        end
-
-        local category = CC_BUTTON_SPELLS[spellId]
-        if not category or not expirationTime or not duration or duration <= 0 then
-            return
-        end
-
-        local state = GetOrCreateDRState(unitGUID, category)
-        local start = expirationTime - duration
-
-        if now > state.resetAt then
-            state.stacks    = 0
-            state.drStart   = 0
-            state.lastStart = 0
-            state.lastIcon  = nil
-        end
-
-        if start > (state.lastStart or 0) + 0.001 or start < (state.lastStart or 0) - 0.5 then
-            state.stacks    = math.min((state.stacks or 0) + 1, 3)
-            state.lastStart = start
-            state.drStart   = now
-            state.resetAt   = now + DR_RESET_TIME
-        else
-            state.resetAt = now + DR_RESET_TIME
-        end
-
-        state.lastIcon = icon
-
-        activeCategories[category] = {
-            icon     = icon,
-            start    = start,
-            duration = duration,
-            stacks   = state.stacks,
-        }
-    end
+    scan.guid, scan.now = unitGUID, now
+    scan.bestSpellId, scan.bestIcon, scan.bestStart, scan.bestDuration, scan.bestRemaining = nil, nil, nil, nil, nil
+    wipe(activeCategories)
 
     for i = 1, 40 do
         local name, _, icon, _, _, duration, expirationTime, _, _, _, spellId = UnitDebuff(unit, i)
         if not name then break end
-        handleAura(icon, duration, expirationTime, spellId)
+        ScanAura(icon, duration, expirationTime, spellId)
     end
 
     for i = 1, 40 do
         local name, _, icon, _, _, duration, expirationTime, _, _, _, spellId = UnitBuff(unit, i)
         if not name then break end
-        handleAura(icon, duration, expirationTime, spellId)
+        ScanAura(icon, duration, expirationTime, spellId)
     end
 
     if f.ccButtons then
-        local drForUnit   = DR_STATES[unitGUID] or {}
-        local usedButtons = {}
+        local drForUnit = DR_STATES[unitGUID] or NO_DR
 
-        for i, _btn in ipairs(f.ccButtons) do
+        for i = 1, #f.ccButtons do
             usedButtons[i] = false
         end
 
@@ -625,12 +654,11 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
             if state.resetAt and now < state.resetAt then
                 local data = activeCategories[category]
                 if not data and state.lastIcon then
-                    data = {
-                        icon     = state.lastIcon,
-                        start    = state.lastStart or 0,
-                        duration = DR_RESET_TIME,
-                        stacks   = state.stacks or 0,
-                    }
+                    data = fallbackData
+                    data.icon     = state.lastIcon
+                    data.start    = state.lastStart or 0
+                    data.duration = DR_RESET_TIME
+                    data.stacks   = state.stacks or 0
                 end
 
                 if data then
@@ -687,6 +715,7 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
         end
     end
 
+    local bestSpellId, bestIcon, bestStart, bestDuration = scan.bestSpellId, scan.bestIcon, scan.bestStart, scan.bestDuration
     if bestSpellId then
         f.spellsIcon.icon:SetTexture(bestIcon or "")
         f.spellsIcon:Show()
@@ -712,74 +741,57 @@ end
 -- Updating frames
 -------------------------------------------------------
 
-local function UpdateUnitFrame(f)
-    local unit = f.unit
+local function RestoreTrinketCooldown(f)
+    local trinket = f.trinket
+    local guid    = UnitGUID(f.unit)
+    local usedAt  = guid and TRINKET_STATE[guid]
+    if not usedAt then return end
 
-    if not IsInArena() then
-        f:SetAlpha(0)
+    local endTime = usedAt + TRINKET_COOLDOWN
+    if endTime <= GetTime() then
+        TRINKET_STATE[guid]      = nil
+        trinket.cooldownStart    = nil
         return
     end
+    if trinket.cooldownStart == usedAt then return end
 
-    if InCombatLockdown() then
-        -- In combat: cannot change secure visibility, only update visuals/alpha
-        if not UnitExists(unit) then
-            -- Unit “gone” (stealth / out of LOS): fade frame, clear icons
-            f:SetAlpha(0.2) -- or 0 for fully hidden
-            if f.trinket then
-                f.trinket.cd:SetCooldown(0, 0)
-                f.trinket:Hide()
-                if f.trinket.durationText then
-                    f.trinket.durationText:SetText("")
-                end
-            end
-            if f.spellsIcon then
-                f.spellsIcon.cd:SetCooldown(0, 0)
-                f.spellsIcon:Hide()
-                if f.spellsIcon.durationText then
-                    f.spellsIcon.durationText:SetText("")
-                end
-            end
-            if f.ccButtons then
-                for _, btn in ipairs(f.ccButtons) do
-                    btn:Hide()
-                    btn.timeLeft = nil
-                    btn:SetScript("OnUpdate", nil)
-                    if btn.durationText then
-                        btn.durationText:SetText("")
-                    end
-                end
-            end
-            return
-        else
-            -- Unit exists in combat: make sure frame is visible via alpha
-            f:SetAlpha(1)
-        end
-    else
-        -- Out of combat: safe to actually show/hide
-        if not UnitExists(unit) then
-            f:SetAlpha(0)
-            f:Hide()
-            return
-        end
-        f:SetAlpha(1)
-        f:Show()
+    trinket.cooldownStart = usedAt
+    trinket.cd:SetCooldown(usedAt, TRINKET_COOLDOWN)
+    StartIconTimer(trinket, TRINKET_COOLDOWN, endTime)
+    if trinket.durationText then
+        trinket.durationText:SetTextColor(1, 1, 1)
     end
+end
 
-    local raceName, raceFile = UnitRace(unit)
-    f.race                   = raceFile
-
-    local r, g, b            = GetClassColor(unit)
-    local pr, pg, pb         = GetPowerColor(unit)
-    f.bg:SetTexture(0, 0, 0, 0.8)
-    f.healthBar:SetStatusBarColor(r, g, b, 1)
-    f.powerBar:SetStatusBarColor(pr, pg, pb, 1)
-
-    local hp, hpMax = UnitHealth(unit), UnitHealthMax(unit)
-    if hpMax and hpMax > 0 then
-        f.healthBar:SetMinMaxValues(0, hpMax)
-        f.healthBar:SetValue(hp)
+local function ClearUnitIcons(f)
+    if f.trinket then
+        f.trinket.cooldownStart = nil
+        f.trinket.cd:SetCooldown(0, 0)
+        f.trinket:Hide()
+        if f.trinket.durationText then
+            f.trinket.durationText:SetText("")
+        end
     end
+    if f.spellsIcon then
+        f.spellsIcon.cd:SetCooldown(0, 0)
+        f.spellsIcon:Hide()
+        if f.spellsIcon.durationText then
+            f.spellsIcon.durationText:SetText("")
+        end
+    end
+    if f.ccButtons then
+        for _, btn in ipairs(f.ccButtons) do
+            btn:Hide()
+            btn.timeLeft = nil
+            btn:SetScript("OnUpdate", nil)
+            if btn.durationText then
+                btn.durationText:SetText("")
+            end
+        end
+    end
+end
 
+local function UpdateHealth(f, unit)
     local hp, hpMax = UnitHealth(unit), UnitHealthMax(unit)
     if hpMax and hpMax > 0 then
         f.healthBar:SetMinMaxValues(0, hpMax)
@@ -797,27 +809,92 @@ local function UpdateUnitFrame(f)
             f.deadIcon:Hide()
         end
     end
+end
 
+local function UpdatePower(f, unit)
     local powerType = UnitPowerType(unit)
     local pp, ppMax = UnitPower(unit, powerType), UnitPowerMax(unit, powerType)
     if ppMax and ppMax > 0 then
         f.powerBar:SetMinMaxValues(0, ppMax)
         f.powerBar:SetValue(pp)
     end
+end
 
+local function UpdateTargetBorder(f, unit)
     if UnitIsUnit("target", unit) then
         f.targetBorder:SetTexture(1, 1, 1, 0.6)
     else
         f.targetBorder:SetTexture(0, 0, 0, 0.6)
     end
+end
+
+local function UpdateUnitFrame(f)
+    local unit = f.unit
+
+    if not IsInArena() then
+        f.live = false
+        f:SetAlpha(0)
+        return
+    end
+
+    -- Show/Hide is driven by RegisterUnitWatch (it works in combat); only alpha and icons are handled here.
+    if not UnitExists(unit) then
+        -- Unit gone (stealth / out of LOS): fade frame, clear icons
+        f.live = false
+        f:SetAlpha(0)
+        ClearUnitIcons(f)
+        return
+    end
+    f.live = true
+    f:SetAlpha(1)
+
+    local raceName, raceFile = UnitRace(unit)
+    f.race                   = raceFile
+
+    local r, g, b            = GetClassColor(unit)
+    local pr, pg, pb         = GetPowerColor(unit)
+    f.bg:SetTexture(0, 0, 0, 0.8)
+    f.healthBar:SetStatusBarColor(r, g, b, 1)
+    f.powerBar:SetStatusBarColor(pr, pg, pb, 1)
+
+    UpdateHealth(f, unit)
+    UpdatePower(f, unit)
+    UpdateTargetBorder(f, unit)
 
     if f.trinket then
         local icon = GetDefaultTrinketIconForUnit(unit)
         f.trinket.icon:SetTexture(icon or DEFAULT_TRINKET_ICON)
         f.trinket:Show() -- NEW: always visible when unit exists
+        RestoreTrinketCooldown(f)
     end
 
     RAF_UpdateSpellsIconForUnitFrame(f)
+end
+
+-- Event -> narrow updater, so a power tick does not rebuild health, auras and icons.
+local UNIT_EVENT_UPDATERS = {
+    UNIT_HEALTH      = UpdateHealth,
+    UNIT_MAXHEALTH   = UpdateHealth,
+    UNIT_MANA        = UpdatePower,
+    UNIT_RAGE        = UpdatePower,
+    UNIT_ENERGY      = UpdatePower,
+    UNIT_RUNIC_POWER = UpdatePower,
+    UNIT_AURA        = RAF_UpdateSpellsIconForUnitFrame,
+}
+
+-- A frame that is not live yet (unit just appeared) needs the full update first.
+local function UpdateUnitFramePartial(f, updater)
+    if f.live and UnitExists(f.unit) then
+        updater(f, f.unit)
+    else
+        UpdateUnitFrame(f)
+    end
+end
+
+local function UpdateTargetBorders()
+    for _, f in ipairs(root.frames) do
+        UpdateUnitFramePartial(f, UpdateTargetBorder)
+    end
 end
 
 function RAF:UpdateAll()
@@ -842,9 +919,25 @@ function RAF:SetVisible(state)
     end
 end
 
+-- Test mode forces the frames visible without units, which the unit watch would hide again.
+local function SetUnitWatched(f, watched)
+    if f.unitWatched == watched then return end
+
+    if watched then
+        RegisterUnitWatch(f)
+    else
+        UnregisterUnitWatch(f)
+    end
+    f.unitWatched = watched
+end
+
 function RAF:RefreshVisibility()
     if InCombatLockdown() then
         return
+    end
+
+    for _, f in ipairs(root.frames) do
+        SetUnitWatched(f, not self.testMode)
     end
 
     if self.testMode then
@@ -899,6 +992,7 @@ function RAF:RefreshVisibility()
 
         for _, f in ipairs(root.frames) do
             if f.trinket then
+                f.trinket.cooldownStart = nil -- UpdateUnitFrame restores it from TRINKET_STATE
                 f.trinket.cd:SetCooldown(0, 0)
                 -- do not force Show() here; UpdateUnitFrame handles per-unit visibility
             end
@@ -937,6 +1031,7 @@ function RAF:RefreshVisibility()
 
         -- NEW: clear DR state between arenas
         wipe(DR_STATES)
+        wipe(TRINKET_STATE)
 
         self:SetVisible(false)
     end
@@ -955,11 +1050,15 @@ local function RAF_OnCombatLogEvent(...)
     if eventType ~= "SPELL_CAST_SUCCESS" then return end
     if not TRINKET_SPELLS[spellID] then return end
 
+    local now = GetTime()
+    TRINKET_STATE[srcGUID] = now
+
     for _, f in ipairs(root.frames) do
         if f.unit and UnitGUID(f.unit) == srcGUID and f.trinket then
             f.trinket:Show()
-            f.trinket.cd:SetCooldown(GetTime(), 120)
-            StartIconTimer(f.trinket, 120)
+            f.trinket.cooldownStart = now
+            f.trinket.cd:SetCooldown(now, TRINKET_COOLDOWN)
+            StartIconTimer(f.trinket, TRINKET_COOLDOWN)
             if f.trinket.durationText then
                 f.trinket.durationText:SetTextColor(1, 1, 1)
             end
@@ -971,23 +1070,73 @@ end
 -- Events
 -------------------------------------------------------
 
+local function ApplySavedSettings()
+    RAFDB = RAFDB or {}
+    for key, value in pairs(DB_DEFAULTS) do
+        if RAFDB[key] == nil then
+            RAFDB[key] = value
+        end
+    end
+
+    root:ClearAllPoints()
+    root:SetPoint("CENTER", UIParent, "CENTER", RAFDB.x, RAFDB.y)
+    if RAFDB.locked then
+        overlay:Hide()
+    else
+        overlay:Show()
+    end
+end
+
 local ef = CreateFrame("Frame")
+ef:RegisterEvent("ADDON_LOADED")
 ef:RegisterEvent("PLAYER_LOGIN")
 ef:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ef:RegisterEvent("PLAYER_ENTERING_WORLD")
-ef:RegisterEvent("ARENA_OPPONENT_UPDATE")
-ef:RegisterEvent("UNIT_HEALTH")
-ef:RegisterEvent("UNIT_MAXHEALTH")
-ef:RegisterEvent("UNIT_MANA")
-ef:RegisterEvent("UNIT_RAGE")
-ef:RegisterEvent("UNIT_ENERGY")
-ef:RegisterEvent("UNIT_RUNIC_POWER")
-ef:RegisterEvent("PLAYER_TARGET_CHANGED")
-ef:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-ef:RegisterEvent("UNIT_AURA")
+
+-- Only listened to inside an arena; these fire constantly (combat log, every unit's health) everywhere else.
+local ARENA_EVENTS = {
+    "ARENA_OPPONENT_UPDATE",
+    "PLAYER_TARGET_CHANGED",
+    "COMBAT_LOG_EVENT_UNFILTERED",
+    "UNIT_HEALTH",
+    "UNIT_MAXHEALTH",
+    "UNIT_MANA",
+    "UNIT_RAGE",
+    "UNIT_ENERGY",
+    "UNIT_RUNIC_POWER",
+    "UNIT_AURA",
+}
+
+local function UpdateArenaEventRegistration()
+    local inArena = IsInArena()
+    for _, event in ipairs(ARENA_EVENTS) do
+        if inArena then
+            ef:RegisterEvent(event)
+        else
+            ef:UnregisterEvent(event)
+        end
+    end
+end
 
 ef:SetScript("OnEvent", function(self, event, arg1, ...)
-    if event == "PLAYER_LOGIN" then
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        RAF_OnCombatLogEvent(arg1, ...)
+    elseif UNIT_EVENT_UPDATERS[event] then
+        local f = FRAME_BY_UNIT[arg1]
+        if f then
+            UpdateUnitFramePartial(f, UNIT_EVENT_UPDATERS[event])
+        end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        UpdateTargetBorders()
+    elseif event == "ARENA_OPPONENT_UPDATE" then
+        RAF:UpdateAll()
+    elseif event == "ADDON_LOADED" then
+        if arg1 == addonName then
+            self:UnregisterEvent("ADDON_LOADED")
+            ApplySavedSettings()
+        end
+    elseif event == "PLAYER_LOGIN" then
+        UpdateArenaEventRegistration()
         RAF:RefreshVisibility()
 
         if RAF.overlay then
@@ -998,17 +1147,8 @@ ef:SetScript("OnEvent", function(self, event, arg1, ...)
             end
         end
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
+        UpdateArenaEventRegistration()
         RAF:RefreshVisibility()
-    elseif event == "PLAYER_TARGET_CHANGED" then
-        RAF:UpdateAll()
-    elseif event == "ARENA_OPPONENT_UPDATE" then
-        RAF:UpdateAll()
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        RAF_OnCombatLogEvent(arg1, ...)
-    elseif event:match("^UNIT_") and arg1 and arg1:match("^arena[1-3]$") then
-        RAF:UpdateAll()
-    elseif event == "UNIT_AURA" and arg1 and arg1:match("^arena[1-3]$") then
-        RAF:UpdateAll()
     end
 end)
 
