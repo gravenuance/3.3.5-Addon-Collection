@@ -221,6 +221,34 @@ local function GetOrCreateDRState(unitGUID, category)
     return state
 end
 
+local function IconTimer_OnUpdate(self)
+    if not self.endTime then
+        self:SetScript("OnUpdate", nil)
+        if self.durationText then
+            self.durationText:SetText("")
+        end
+        return
+    end
+
+    local remaining = self.endTime - GetTime()
+    if remaining <= 0 then
+        self.endTime = nil
+        if self.durationText then
+            self.durationText:SetText("")
+        end
+        self:SetScript("OnUpdate", nil)
+        return
+    end
+
+    local t
+    if remaining > 1 then
+        t = math.floor(remaining + 0.5)
+    else
+        t = 1
+    end
+    self.durationText:SetText(t)
+end
+
 local function StartIconTimer(frame, duration, absoluteEndTime)
     if not frame.durationText or not duration or duration <= 0 then return end
 
@@ -231,33 +259,7 @@ local function StartIconTimer(frame, duration, absoluteEndTime)
         frame.endTime = GetTime() + duration
     end
 
-    frame:SetScript("OnUpdate", function(self, elapsed)
-        if not self.endTime then
-            self:SetScript("OnUpdate", nil)
-            if self.durationText then
-                self.durationText:SetText("")
-            end
-            return
-        end
-
-        local remaining = self.endTime - GetTime()
-        if remaining <= 0 then
-            self.endTime = nil
-            if self.durationText then
-                self.durationText:SetText("")
-            end
-            self:SetScript("OnUpdate", nil)
-            return
-        end
-
-        local t
-        if remaining > 1 then
-            t = math.floor(remaining + 0.5)
-        else
-            t = 1
-        end
-        self.durationText:SetText(t)
-    end)
+    frame:SetScript("OnUpdate", IconTimer_OnUpdate)
 end
 
 -------------------------------------------------------
@@ -543,13 +545,78 @@ local function CreateArenaFrame(parent, index, unit)
 end
 
 root.frames = {}
+local FRAME_BY_UNIT = {}
 for i, unit in ipairs(ARENA_UNITS) do
     root.frames[i] = CreateArenaFrame(root, i, unit)
+    FRAME_BY_UNIT[unit] = root.frames[i]
 end
 
 -------------------------------------------------------
 -- Spells icon & DR logic
 -------------------------------------------------------
+
+-- Scratch state shared by every aura scan so UNIT_AURA allocates no tables or closures.
+local scan             = {}
+local activeCategories = {}
+local categoryData     = {}
+local fallbackData     = {}
+
+local function ScanAura(icon, duration, expirationTime, spellId)
+    if not spellId then return end
+
+    local now = scan.now
+
+    if spells[spellId] and duration and duration > 0 and expirationTime then
+        local remaining = expirationTime - now
+        if remaining > 0 and (not scan.bestRemaining or remaining > scan.bestRemaining) then
+            scan.bestSpellId = spellId
+            scan.bestIcon = icon
+            scan.bestDuration = duration
+            scan.bestStart = expirationTime - duration
+            scan.bestRemaining = remaining
+        end
+    end
+
+    local category = CC_BUTTON_SPELLS[spellId]
+    if not category or not expirationTime or not duration or duration <= 0 then
+        return
+    end
+
+    local state = GetOrCreateDRState(scan.guid, category)
+    local start = expirationTime - duration
+
+    if now > state.resetAt then
+        state.stacks    = 0
+        state.drStart   = 0
+        state.lastStart = 0
+        state.lastIcon  = nil
+    end
+
+    if start > (state.lastStart or 0) + 0.001 or start < (state.lastStart or 0) - 0.5 then
+        state.stacks    = math.min((state.stacks or 0) + 1, 3)
+        state.lastStart = start
+        state.drStart   = now
+        state.resetAt   = now + DR_RESET_TIME
+    else
+        state.resetAt = now + DR_RESET_TIME
+    end
+
+    state.lastIcon = icon
+
+    local data = categoryData[category]
+    if not data then
+        data = {}
+        categoryData[category] = data
+    end
+    data.icon     = icon
+    data.start    = start
+    data.duration = duration
+    data.stacks   = state.stacks
+    activeCategories[category] = data
+end
+
+local usedButtons = {}
+local NO_DR       = {}
 
 local function RAF_UpdateSpellsIconForUnitFrame(f)
     if not f.spellsIcon or not f.unit then return end
@@ -560,76 +627,26 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
 
     local now = GetTime()
 
-    local activeCategories = {}
-    local bestSpellId, bestIcon, bestStart, bestDuration, bestRemaining
-
-    local function handleAura(icon, duration, expirationTime, spellId)
-        if not spellId then return end
-
-        local now = GetTime() -- moved here
-
-        if spells[spellId] and duration and duration > 0 and expirationTime then
-            local remaining = expirationTime - now
-            if remaining > 0 and (not bestRemaining or remaining > bestRemaining) then
-                bestSpellId = spellId
-                bestIcon = icon
-                bestDuration = duration
-                bestStart = expirationTime - duration
-                bestRemaining = remaining
-            end
-        end
-
-        local category = CC_BUTTON_SPELLS[spellId]
-        if not category or not expirationTime or not duration or duration <= 0 then
-            return
-        end
-
-        local state = GetOrCreateDRState(unitGUID, category)
-        local start = expirationTime - duration
-
-        if now > state.resetAt then
-            state.stacks    = 0
-            state.drStart   = 0
-            state.lastStart = 0
-            state.lastIcon  = nil
-        end
-
-        if start > (state.lastStart or 0) + 0.001 or start < (state.lastStart or 0) - 0.5 then
-            state.stacks    = math.min((state.stacks or 0) + 1, 3)
-            state.lastStart = start
-            state.drStart   = now
-            state.resetAt   = now + DR_RESET_TIME
-        else
-            state.resetAt = now + DR_RESET_TIME
-        end
-
-        state.lastIcon = icon
-
-        activeCategories[category] = {
-            icon     = icon,
-            start    = start,
-            duration = duration,
-            stacks   = state.stacks,
-        }
-    end
+    scan.guid, scan.now = unitGUID, now
+    scan.bestSpellId, scan.bestIcon, scan.bestStart, scan.bestDuration, scan.bestRemaining = nil, nil, nil, nil, nil
+    wipe(activeCategories)
 
     for i = 1, 40 do
         local name, _, icon, _, _, duration, expirationTime, _, _, _, spellId = UnitDebuff(unit, i)
         if not name then break end
-        handleAura(icon, duration, expirationTime, spellId)
+        ScanAura(icon, duration, expirationTime, spellId)
     end
 
     for i = 1, 40 do
         local name, _, icon, _, _, duration, expirationTime, _, _, _, spellId = UnitBuff(unit, i)
         if not name then break end
-        handleAura(icon, duration, expirationTime, spellId)
+        ScanAura(icon, duration, expirationTime, spellId)
     end
 
     if f.ccButtons then
-        local drForUnit   = DR_STATES[unitGUID] or {}
-        local usedButtons = {}
+        local drForUnit = DR_STATES[unitGUID] or NO_DR
 
-        for i, _btn in ipairs(f.ccButtons) do
+        for i = 1, #f.ccButtons do
             usedButtons[i] = false
         end
 
@@ -637,12 +654,11 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
             if state.resetAt and now < state.resetAt then
                 local data = activeCategories[category]
                 if not data and state.lastIcon then
-                    data = {
-                        icon     = state.lastIcon,
-                        start    = state.lastStart or 0,
-                        duration = DR_RESET_TIME,
-                        stacks   = state.stacks or 0,
-                    }
+                    data = fallbackData
+                    data.icon     = state.lastIcon
+                    data.start    = state.lastStart or 0
+                    data.duration = DR_RESET_TIME
+                    data.stacks   = state.stacks or 0
                 end
 
                 if data then
@@ -699,6 +715,7 @@ local function RAF_UpdateSpellsIconForUnitFrame(f)
         end
     end
 
+    local bestSpellId, bestIcon, bestStart, bestDuration = scan.bestSpellId, scan.bestIcon, scan.bestStart, scan.bestDuration
     if bestSpellId then
         f.spellsIcon.icon:SetTexture(bestIcon or "")
         f.spellsIcon:Show()
@@ -774,38 +791,7 @@ local function ClearUnitIcons(f)
     end
 end
 
-local function UpdateUnitFrame(f)
-    local unit = f.unit
-
-    if not IsInArena() then
-        f:SetAlpha(0)
-        return
-    end
-
-    -- Show/Hide is driven by RegisterUnitWatch (it works in combat); only alpha and icons are handled here.
-    if not UnitExists(unit) then
-        -- Unit gone (stealth / out of LOS): fade frame, clear icons
-        f:SetAlpha(0)
-        ClearUnitIcons(f)
-        return
-    end
-    f:SetAlpha(1)
-
-    local raceName, raceFile = UnitRace(unit)
-    f.race                   = raceFile
-
-    local r, g, b            = GetClassColor(unit)
-    local pr, pg, pb         = GetPowerColor(unit)
-    f.bg:SetTexture(0, 0, 0, 0.8)
-    f.healthBar:SetStatusBarColor(r, g, b, 1)
-    f.powerBar:SetStatusBarColor(pr, pg, pb, 1)
-
-    local hp, hpMax = UnitHealth(unit), UnitHealthMax(unit)
-    if hpMax and hpMax > 0 then
-        f.healthBar:SetMinMaxValues(0, hpMax)
-        f.healthBar:SetValue(hp)
-    end
-
+local function UpdateHealth(f, unit)
     local hp, hpMax = UnitHealth(unit), UnitHealthMax(unit)
     if hpMax and hpMax > 0 then
         f.healthBar:SetMinMaxValues(0, hpMax)
@@ -823,19 +809,57 @@ local function UpdateUnitFrame(f)
             f.deadIcon:Hide()
         end
     end
+end
 
+local function UpdatePower(f, unit)
     local powerType = UnitPowerType(unit)
     local pp, ppMax = UnitPower(unit, powerType), UnitPowerMax(unit, powerType)
     if ppMax and ppMax > 0 then
         f.powerBar:SetMinMaxValues(0, ppMax)
         f.powerBar:SetValue(pp)
     end
+end
 
+local function UpdateTargetBorder(f, unit)
     if UnitIsUnit("target", unit) then
         f.targetBorder:SetTexture(1, 1, 1, 0.6)
     else
         f.targetBorder:SetTexture(0, 0, 0, 0.6)
     end
+end
+
+local function UpdateUnitFrame(f)
+    local unit = f.unit
+
+    if not IsInArena() then
+        f.live = false
+        f:SetAlpha(0)
+        return
+    end
+
+    -- Show/Hide is driven by RegisterUnitWatch (it works in combat); only alpha and icons are handled here.
+    if not UnitExists(unit) then
+        -- Unit gone (stealth / out of LOS): fade frame, clear icons
+        f.live = false
+        f:SetAlpha(0)
+        ClearUnitIcons(f)
+        return
+    end
+    f.live = true
+    f:SetAlpha(1)
+
+    local raceName, raceFile = UnitRace(unit)
+    f.race                   = raceFile
+
+    local r, g, b            = GetClassColor(unit)
+    local pr, pg, pb         = GetPowerColor(unit)
+    f.bg:SetTexture(0, 0, 0, 0.8)
+    f.healthBar:SetStatusBarColor(r, g, b, 1)
+    f.powerBar:SetStatusBarColor(pr, pg, pb, 1)
+
+    UpdateHealth(f, unit)
+    UpdatePower(f, unit)
+    UpdateTargetBorder(f, unit)
 
     if f.trinket then
         local icon = GetDefaultTrinketIconForUnit(unit)
@@ -845,6 +869,32 @@ local function UpdateUnitFrame(f)
     end
 
     RAF_UpdateSpellsIconForUnitFrame(f)
+end
+
+-- Event -> narrow updater, so a power tick does not rebuild health, auras and icons.
+local UNIT_EVENT_UPDATERS = {
+    UNIT_HEALTH      = UpdateHealth,
+    UNIT_MAXHEALTH   = UpdateHealth,
+    UNIT_MANA        = UpdatePower,
+    UNIT_RAGE        = UpdatePower,
+    UNIT_ENERGY      = UpdatePower,
+    UNIT_RUNIC_POWER = UpdatePower,
+    UNIT_AURA        = RAF_UpdateSpellsIconForUnitFrame,
+}
+
+-- A frame that is not live yet (unit just appeared) needs the full update first.
+local function UpdateUnitFramePartial(f, updater)
+    if f.live and UnitExists(f.unit) then
+        updater(f, f.unit)
+    else
+        UpdateUnitFrame(f)
+    end
+end
+
+local function UpdateTargetBorders()
+    for _, f in ipairs(root.frames) do
+        UpdateUnitFramePartial(f, UpdateTargetBorder)
+    end
 end
 
 function RAF:UpdateAll()
@@ -1042,24 +1092,51 @@ ef:RegisterEvent("ADDON_LOADED")
 ef:RegisterEvent("PLAYER_LOGIN")
 ef:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ef:RegisterEvent("PLAYER_ENTERING_WORLD")
-ef:RegisterEvent("ARENA_OPPONENT_UPDATE")
-ef:RegisterEvent("UNIT_HEALTH")
-ef:RegisterEvent("UNIT_MAXHEALTH")
-ef:RegisterEvent("UNIT_MANA")
-ef:RegisterEvent("UNIT_RAGE")
-ef:RegisterEvent("UNIT_ENERGY")
-ef:RegisterEvent("UNIT_RUNIC_POWER")
-ef:RegisterEvent("PLAYER_TARGET_CHANGED")
-ef:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-ef:RegisterEvent("UNIT_AURA")
+
+-- Only listened to inside an arena; these fire constantly (combat log, every unit's health) everywhere else.
+local ARENA_EVENTS = {
+    "ARENA_OPPONENT_UPDATE",
+    "PLAYER_TARGET_CHANGED",
+    "COMBAT_LOG_EVENT_UNFILTERED",
+    "UNIT_HEALTH",
+    "UNIT_MAXHEALTH",
+    "UNIT_MANA",
+    "UNIT_RAGE",
+    "UNIT_ENERGY",
+    "UNIT_RUNIC_POWER",
+    "UNIT_AURA",
+}
+
+local function UpdateArenaEventRegistration()
+    local inArena = IsInArena()
+    for _, event in ipairs(ARENA_EVENTS) do
+        if inArena then
+            ef:RegisterEvent(event)
+        else
+            ef:UnregisterEvent(event)
+        end
+    end
+end
 
 ef:SetScript("OnEvent", function(self, event, arg1, ...)
-    if event == "ADDON_LOADED" then
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        RAF_OnCombatLogEvent(arg1, ...)
+    elseif UNIT_EVENT_UPDATERS[event] then
+        local f = FRAME_BY_UNIT[arg1]
+        if f then
+            UpdateUnitFramePartial(f, UNIT_EVENT_UPDATERS[event])
+        end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        UpdateTargetBorders()
+    elseif event == "ARENA_OPPONENT_UPDATE" then
+        RAF:UpdateAll()
+    elseif event == "ADDON_LOADED" then
         if arg1 == addonName then
             self:UnregisterEvent("ADDON_LOADED")
             ApplySavedSettings()
         end
     elseif event == "PLAYER_LOGIN" then
+        UpdateArenaEventRegistration()
         RAF:RefreshVisibility()
 
         if RAF.overlay then
@@ -1070,17 +1147,8 @@ ef:SetScript("OnEvent", function(self, event, arg1, ...)
             end
         end
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
+        UpdateArenaEventRegistration()
         RAF:RefreshVisibility()
-    elseif event == "PLAYER_TARGET_CHANGED" then
-        RAF:UpdateAll()
-    elseif event == "ARENA_OPPONENT_UPDATE" then
-        RAF:UpdateAll()
-    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        RAF_OnCombatLogEvent(arg1, ...)
-    elseif event:match("^UNIT_") and arg1 and arg1:match("^arena[1-3]$") then
-        RAF:UpdateAll()
-    elseif event == "UNIT_AURA" and arg1 and arg1:match("^arena[1-3]$") then
-        RAF:UpdateAll()
     end
 end)
 
