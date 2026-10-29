@@ -179,7 +179,9 @@ local function InitAdjacentTargeting()
                 index = 1
             end
 
-            self:RunAttribute("SetIndex", index)
+            -- wotlk 3.3.5 doesn't have the control methods on self
+            local run = control or self
+            run:RunAttribute("SetIndex", index)
 
             local unit = self:GetAttribute("FSUnit" .. index) or "none"
             self:SetAttribute("unit", unit)
@@ -198,7 +200,9 @@ local function InitAdjacentTargeting()
                 index = maxUnits
             end
 
-            self:RunAttribute("SetIndex", index)
+            -- wotlk 3.3.5 doesn't have the control methods on self
+            local run = control or self
+            run:RunAttribute("SetIndex", index)
 
             local unit = self:GetAttribute("FSUnit" .. index) or "none"
             self:SetAttribute("unit", unit)
@@ -213,7 +217,9 @@ local function InitAdjacentTargeting()
             local maxUnits = self:GetAttribute("FSUnitsCount")
             local index = min((self:GetAttribute("FSIndex") or 0) + 1, maxUnits)
 
-            self:RunAttribute("SetIndex", index)
+            -- wotlk 3.3.5 doesn't have the control methods on self
+            local run = control or self
+            run:RunAttribute("SetIndex", index)
 
             local unit = self:GetAttribute("FSUnit" .. index) or "none"
             self:SetAttribute("unit", unit)
@@ -228,7 +234,9 @@ local function InitAdjacentTargeting()
             local maxUnits = self:GetAttribute("FSUnitsCount")
             local index = max((self:GetAttribute("FSIndex") or 0) - 1, 1)
 
-            self:RunAttribute("SetIndex", index)
+            -- wotlk 3.3.5 doesn't have the control methods on self
+            local run = control or self
+            run:RunAttribute("SetIndex", index)
 
             local unit = self:GetAttribute("FSUnit" .. index) or "none"
             self:SetAttribute("unit", unit)
@@ -265,26 +273,12 @@ function M:FriendlyFrames()
         return {}
     end
 
-    local start1 = wow.GetTimePreciseSec()
-
-    local result = fsEnumerable
+    return fsEnumerable
         :From(frames)
         :OrderBy(function(x, y)
             return fsCompare:CompareTopLeftFuzzy(x, y)
         end)
         :ToTable()
-
-    local stop1 = wow.GetTimePreciseSec()
-    local start2 = wow.GetTimePreciseSec()
-
-    table.sort(frames, function (x, y)
-        return fsCompare:CompareTopLeftFuzzy(x, y)
-    end)
-
-    local stop2 = wow.GetTimePreciseSec()
-    fsLog:Debug(string.format("Testing took took %fms, v2 %fms.", (stop1 - start1) * 1000, (stop2 - start2) * 1000))
-
-    return result
 end
 
 function M:FriendlyUnits()
