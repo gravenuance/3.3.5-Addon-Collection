@@ -341,6 +341,9 @@ local function CreateArenaFrame(parent, index, unit)
         f:SetAttribute("type1", "target")
         f:RegisterForClicks("AnyUp")
         f:EnableMouse(true)
+        -- The secure unit watch shows/hides the frame with its unit, including in combat when addon code cannot.
+        RegisterUnitWatch(f)
+        f.unitWatched = true
     end
 
     if index == 1 then
@@ -716,6 +719,33 @@ end
 -- Updating frames
 -------------------------------------------------------
 
+local function ClearUnitIcons(f)
+    if f.trinket then
+        f.trinket.cd:SetCooldown(0, 0)
+        f.trinket:Hide()
+        if f.trinket.durationText then
+            f.trinket.durationText:SetText("")
+        end
+    end
+    if f.spellsIcon then
+        f.spellsIcon.cd:SetCooldown(0, 0)
+        f.spellsIcon:Hide()
+        if f.spellsIcon.durationText then
+            f.spellsIcon.durationText:SetText("")
+        end
+    end
+    if f.ccButtons then
+        for _, btn in ipairs(f.ccButtons) do
+            btn:Hide()
+            btn.timeLeft = nil
+            btn:SetScript("OnUpdate", nil)
+            if btn.durationText then
+                btn.durationText:SetText("")
+            end
+        end
+    end
+end
+
 local function UpdateUnitFrame(f)
     local unit = f.unit
 
@@ -724,50 +754,14 @@ local function UpdateUnitFrame(f)
         return
     end
 
-    if InCombatLockdown() then
-        -- In combat: cannot change secure visibility, only update visuals/alpha
-        if not UnitExists(unit) then
-            -- Unit “gone” (stealth / out of LOS): fade frame, clear icons
-            f:SetAlpha(0.2) -- or 0 for fully hidden
-            if f.trinket then
-                f.trinket.cd:SetCooldown(0, 0)
-                f.trinket:Hide()
-                if f.trinket.durationText then
-                    f.trinket.durationText:SetText("")
-                end
-            end
-            if f.spellsIcon then
-                f.spellsIcon.cd:SetCooldown(0, 0)
-                f.spellsIcon:Hide()
-                if f.spellsIcon.durationText then
-                    f.spellsIcon.durationText:SetText("")
-                end
-            end
-            if f.ccButtons then
-                for _, btn in ipairs(f.ccButtons) do
-                    btn:Hide()
-                    btn.timeLeft = nil
-                    btn:SetScript("OnUpdate", nil)
-                    if btn.durationText then
-                        btn.durationText:SetText("")
-                    end
-                end
-            end
-            return
-        else
-            -- Unit exists in combat: make sure frame is visible via alpha
-            f:SetAlpha(1)
-        end
-    else
-        -- Out of combat: safe to actually show/hide
-        if not UnitExists(unit) then
-            f:SetAlpha(0)
-            f:Hide()
-            return
-        end
-        f:SetAlpha(1)
-        f:Show()
+    -- Show/Hide is driven by RegisterUnitWatch (it works in combat); only alpha and icons are handled here.
+    if not UnitExists(unit) then
+        -- Unit gone (stealth / out of LOS): fade frame, clear icons
+        f:SetAlpha(0)
+        ClearUnitIcons(f)
+        return
     end
+    f:SetAlpha(1)
 
     local raceName, raceFile = UnitRace(unit)
     f.race                   = raceFile
@@ -846,9 +840,25 @@ function RAF:SetVisible(state)
     end
 end
 
+-- Test mode forces the frames visible without units, which the unit watch would hide again.
+local function SetUnitWatched(f, watched)
+    if f.unitWatched == watched then return end
+
+    if watched then
+        RegisterUnitWatch(f)
+    else
+        UnregisterUnitWatch(f)
+    end
+    f.unitWatched = watched
+end
+
 function RAF:RefreshVisibility()
     if InCombatLockdown() then
         return
+    end
+
+    for _, f in ipairs(root.frames) do
+        SetUnitWatched(f, not self.testMode)
     end
 
     if self.testMode then
