@@ -13,7 +13,6 @@ local EventHandler_Register = EventHandler.Register
 
 local RESCOMM
 local HEALCOMM
-local HEALCOMM_PLAYER_GUID
 
 local UNIT_INDEX = {"player", "pet", "target", "focus"}
 
@@ -35,10 +34,6 @@ function UnitGetIncomingHeals(Unit, Healer, GUID)
 	if ( Unit ) then
 		if ( HEALCOMM == nil and LibStub ) then
 			HEALCOMM = LibStub:GetLibrary("LibHealComm-4.0", true) or false
-
-			if ( HEALCOMM and not HEALCOMM_PLAYER_GUID ) then
-				HEALCOMM_PLAYER_GUID = UnitGUID("player")
-			end
 		end
 
 		if ( HEALCOMM ) then
@@ -46,7 +41,16 @@ function UnitGetIncomingHeals(Unit, Healer, GUID)
 				Unit = UnitGUID(Unit)
 			end
 
-			return HEALCOMM:GetHealAmount(Unit, HEALCOMM.CASTED_HEALS, GetTime() + 5, HEALCOMM_PLAYER_GUID)
+			-- A nil caster GUID sums the heals of every caster.
+			local CasterGUID = nil
+			if ( Healer ) then
+				CasterGUID = UnitGUID(Healer)
+				if ( not CasterGUID ) then
+					return 0
+				end
+			end
+
+			return HEALCOMM:GetHealAmount(Unit, HEALCOMM.CASTED_HEALS, GetTime() + 5, CasterGUID)
 		end
 	end
 end
@@ -73,7 +77,7 @@ local function UNIT_HEAL_PREDICTION(Limit, GUID, ...)
 end
 
 local function HealComm_HealStarted(_, Event, SrcGUID, SpellID, Type, EndTime, ...)
-	if ( SrcGUID == HEALCOMM_PLAYER_GUID and BitBand(Type, HEALCOMM.CASTED_HEALS) > 0 ) then
+	if ( BitBand(Type, HEALCOMM.CASTED_HEALS) > 0 ) then
 		UNIT_HEAL_PREDICTION(nil, ...)
 	end
 end
@@ -86,10 +90,6 @@ local function UNIT_HEAL_PREDICTION_EH(Trigger)
 	if ( Trigger == "OnRegister" ) then
 		if ( HEALCOMM == nil and LibStub ) then
 			HEALCOMM = LibStub:GetLibrary("LibHealComm-4.0", true) or false
-
-			if ( HEALCOMM and not HEALCOMM_PLAYER_GUID ) then
-				HEALCOMM_PLAYER_GUID = UnitGUID("player")
-			end
 		end
 
 		if ( HEALCOMM and not EventHandler.HealComm_HealStarted) then
