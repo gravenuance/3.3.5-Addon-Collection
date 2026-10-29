@@ -1,4 +1,5 @@
 local PLAYER_REGEN_ENABLED_AWAIT;
+local PLAYER_REGEN_ENABLED_APPLY_PROFILE;
 local GetInstanceInfo = C_GetInstanceInfo;
 
 function CompactUnitFrameProfiles_OnLoad(self)
@@ -40,6 +41,10 @@ function CompactUnitFrameProfiles_OnEvent(self, event, ...)
 
 		CompactUnitFrameProfiles_CheckAutoActivation();
 	elseif ( event == "PLAYER_REGEN_ENABLED" ) then
+		if ( PLAYER_REGEN_ENABLED_APPLY_PROFILE ) then
+			PLAYER_REGEN_ENABLED_APPLY_PROFILE = nil;
+			CompactUnitFrameProfiles_ApplyCurrentSettings();
+		end
 		if ( PLAYER_REGEN_ENABLED_AWAIT ) then
 			PLAYER_REGEN_ENABLED_AWAIT = nil;
 			CompactUnitFrameProfiles_OnEvent(self, "GROUP_ROSTER_UPDATE");
@@ -487,11 +492,14 @@ end
 
 function CompactUnitFrameProfilesSlider_Update(self)
 	local currentValue = GetRaidProfileOption(CompactUnitFrameProfiles.selectedProfile, self.optionName);
+	--3.3.5 gives OnValueChanged no userInput flag, so mark programmatic updates ourselves.
+	self.isUpdating = true;
 	self:SetValue(currentValue);
+	self.isUpdating = nil;
 end
 
 function CompactUnitFrameProfilesSlider_OnValueChanged(self, value, userInput)
-	if ( userInput ) then
+	if ( userInput and not self.isUpdating ) then
 		SetRaidProfileOption(CompactUnitFrameProfiles.selectedProfile, self.optionName, value);
 		CompactUnitFrameProfiles_ApplyCurrentSettings();
 		CompactUnitFrameProfiles_UpdateCurrentPanel();
@@ -528,6 +536,12 @@ end
 -----------------Applying of Options----------------------
 -------------------------------------------------------------
 function CompactUnitFrameProfiles_ApplyProfile(profile)
+	if ( InCombatLockdown() ) then
+		--Resizing, re-anchoring and showing the secure unit frames is blocked in combat.
+		PLAYER_REGEN_ENABLED_APPLY_PROFILE = true;
+		return;
+	end
+
 	local settings = GetRaidProfileFlattenedOptions(profile);
 	for settingName, value in pairs(settings) do
 		local func = CUFProfileActionTable[settingName];
