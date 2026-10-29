@@ -108,18 +108,10 @@ function Auras:Refresh(unitID)
     end
 end
 
-function Auras:OnApply(_, _, _, _, _, unitGUID, _, _, spellID, _, _, auraType)
-    local _, _, _, _, _, duration, _, _, _, _ = GetSpellInfo(spellID)
-    --print(duration, spellID, auraType)
-    if not duration then return end
-    --print(duration, spellID, auraType, 2)
-    local auraTypeKey = (auraType == "BUFF") and "BUFF" or "DEBUFF"
-    --print(duration, spellID, auraType, 3)
-    if not ShouldTrackAura(spellID, duration, auraTypeKey) then
-        return
-    end
-    AddAura(unitGUID, auraTypeKey, spellID, duration, GetTime() + duration, nil)
-
+-- The combat log carries no aura duration, so only units with a unit token
+-- can be tracked: the plate's refresh rebuilds the list from UnitAura, which
+-- also keeps SPELL_AURA_REFRESH from adding duplicates.
+function Auras:OnApply(_, _, _, _, _, unitGUID)
     addon.Nameplate:UpdateForGUID(unitGUID)
 end
 
@@ -145,23 +137,13 @@ function Auras:OnRemove(_, _, _, _, _, unitGUID, _, _, spellID, _, _, auraType)
     addon.Nameplate:UpdateForGUID(unitGUID)
 end
 
-function Auras:OnStolen(_, _, _, sourceGUID, _, _, destGUID, _, _, _, _, _,
+function Auras:OnStolen(_, _, sourceGUID, _, _, destGUID, _, _, _, _, _,
                         extraSpellID, _, _, auraType)
     -- Remove the stolen aura from the original target
     self:OnRemove(nil, nil, nil, nil, nil, destGUID, nil, nil, extraSpellID, nil, nil, auraType)
     addon.Nameplate:UpdateForGUID(destGUID)
     if not sourceGUID then return end
 
-    local auraTypeKey = "BUFF" -- stolen effects are buffs on the stealer
-    local _, _, _, _, _, duration = GetSpellInfo(extraSpellID)
-    if not duration or duration <= 0 then
-        return
-    end
-
-    if not ShouldTrackAura(extraSpellID, duration, auraTypeKey) then
-        return
-    end
-
-    AddAura(sourceGUID, auraTypeKey, extraSpellID, duration, GetTime() + duration, nil)
+    -- Stolen effects are buffs on the stealer
     addon.Nameplate:UpdateForGUID(sourceGUID)
 end
