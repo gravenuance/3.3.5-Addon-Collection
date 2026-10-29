@@ -795,7 +795,10 @@ end
 
 local function ActionButton_ShowGrid(button)
     ShowBackgroundActionButton(button)
-    button:Show()
+    -- Action buttons are protected; Blizzard calls this in combat too.
+    if not InCombatLockdown() then
+        button:Show()
+    end
 end
 
 local function ActionButton_Update(button)
@@ -1109,21 +1112,38 @@ function Module:OnDisable()
     self:Unhook('MainMenuBar_ToPlayerArt', MainMenuBar_ToPlayerArt)
 end
 
+local pendingWorldEntry = false
+local pendingPetBar = false
+
+-- Re-arms on every call: the waiter unregisters itself once combat ends.
+local function DeferUntilCombatEnds()
+    local waiter = Module.combatLockdownFrame
+    if not waiter then
+        waiter = CreateFrame("Frame")
+        Module.combatLockdownFrame = waiter
+        waiter:SetScript("OnEvent", function(frame)
+            frame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            if pendingWorldEntry then
+                pendingWorldEntry = false
+                Module:PLAYER_ENTERING_WORLD()
+            end
+            if pendingPetBar then
+                pendingPetBar = false
+                Module:PET_BAR_UPDATE()
+            end
+        end)
+    end
+    waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+end
+
 function Module:PLAYER_ENTERING_WORLD()
     if InCombatLockdown() then
         -- Reparenting/resizing the secure Blizzard action bar frames while
         -- in combat lockdown (e.g. /reload mid-fight, or zoning into an
         -- instance already engaged) throws ADDON_ACTION_BLOCKED. Defer
         -- until combat ends instead.
-        if not self.combatLockdownFrame then
-            local waiter = CreateFrame("Frame")
-            self.combatLockdownFrame = waiter
-            waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
-            waiter:SetScript("OnEvent", function(frame)
-                frame:UnregisterEvent("PLAYER_REGEN_ENABLED")
-                Module:PLAYER_ENTERING_WORLD()
-            end)
-        end
+        pendingWorldEntry = true
+        DeferUntilCombatEnds()
         return
     end
 
@@ -1164,10 +1184,10 @@ local petBarInitialized = false
 
 function Module:PET_BAR_UPDATE()
     if InCombatLockdown() then
-        -- Skip for now; PET_BAR_UPDATE fires again later (e.g. once combat
-        -- ends and the pet bar next changes), so petBarInitialized staying
-        -- false just means we retry then instead of touching secure pet/
-        -- shapeshift bar frames mid-combat.
+        -- Don't touch the secure pet/shapeshift bar frames mid-combat;
+        -- retry once combat ends.
+        pendingPetBar = true
+        DeferUntilCombatEnds()
         return
     end
 
