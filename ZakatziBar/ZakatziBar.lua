@@ -1,4 +1,10 @@
+local addon_name = ...
+
 local is_debugging
+
+-- Saved anchor position and lock state; schema in zb_load_db
+local db
+local DB_VERSION = 1
 
 local spells_list
 local player_spells_list
@@ -20,6 +26,10 @@ local party_bar
 local player_bar
 -- Event frame; also drives the cooldown OnUpdate
 local zb_frame
+-- Draggable frame the three bars hang from
+local anchor
+local anchor_texture
+local anchor_text
 
 -- Delay for more accurate tracking
 local count_delay_from_start
@@ -37,13 +47,10 @@ local player_guid
 -- Cached set of current party member GUIDs, refreshed on PARTY_MEMBERS_CHANGED
 local party_guids
 
---Bar locations
-local player_bar_x
-local player_bar_y
-local party_bar_x
-local party_bar_y
-local hostile_bar_x
-local hostile_bar_y
+-- Vertical offsets of the bars from the anchor
+local player_bar_offset
+local party_bar_offset
+local hostile_bar_offset
 
 local is_disabled
 
@@ -56,12 +63,9 @@ local function zb_initialize_variables()
 
     all = true
 
-    player_bar_x = -225
-    player_bar_y = -225
-    party_bar_x = -225
-    party_bar_y = -275
-    hostile_bar_x = -225
-    hostile_bar_y = -325
+    player_bar_offset = 0
+    party_bar_offset = -50
+    hostile_bar_offset = -100
     square_size = 45
 
     party_guids = {}
@@ -370,6 +374,13 @@ local function zb_initialize_variables()
     special_spells_list[16188] = 3 -- Restoration Shaman
 end
 
+-- Icons are ordered by array position; this puts the frame at index into its slot on the bar.
+local function zb_place_icon(bar, index)
+    local icon = bar[index]
+    icon:ClearAllPoints()
+    icon:SetPoint("CENTER", bar, "CENTER", (square_size + 5) * index, 0)
+end
+
 local function zb_remove_icon(bar, length, id, is_aura, src_guid, dst_guid)
     if is_aura then
         local index = 1
@@ -388,26 +399,44 @@ local function zb_remove_icon(bar, length, id, is_aura, src_guid, dst_guid)
             return length
         end
     end
+    -- Shift the frames left over the removed one and park it, cleared, as the first spare slot.
     length = length - 1
+    local removed = bar[id]
     local index = id
     while index < length do
-        bar[index].id = bar[index+1].id
-        bar[index].src_guid = bar[index+1].src_guid
-        bar[index].dst_guid = bar[index+1].dst_guid
-        bar[index].duration = bar[index+1].duration
-        bar[index].start = bar[index+1].start
-        bar[index].cooldown = bar[index+1].cooldown
-        bar[index].list = bar[index+1].list
-        bar[index].texture:SetTexture(bar[index+1].texture:GetTexture())
-        bar[index].text:SetText(bar[index+1].text:GetText())
-        bar[index].cd:SetCooldown(bar[index].start,bar[index].duration)
+        bar[index] = bar[index+1]
+        zb_place_icon(bar, index)
         index = index + 1
     end
-    bar[length]:Hide()
-    bar[length].flasher:Stop()
-    bar[length].is_playing = false
-    bar[length].text:SetText("")
+    bar[length] = removed
+    zb_place_icon(bar, length)
+    removed:Hide()
+    removed.flasher:Stop()
+    removed.is_playing = false
+    removed.text:SetText("")
+    removed.id = nil
+    removed.src_guid = nil
+    removed.dst_guid = nil
+    removed.has_charges = nil
+    removed.list = nil
     return length
+end
+
+-- Moves the icon at index left or right until the bar is ordered by remaining cooldown again.
+local function zb_resort_icon(bar, length, index)
+    local icon = bar[index]
+    while index > 1 and bar[index-1].cooldown > icon.cooldown do
+        bar[index] = bar[index-1]
+        zb_place_icon(bar, index)
+        index = index - 1
+    end
+    while index < length - 1 and bar[index+1].cooldown < icon.cooldown do
+        bar[index] = bar[index+1]
+        zb_place_icon(bar, index)
+        index = index + 1
+    end
+    bar[index] = icon
+    zb_place_icon(bar, index)
 end
 
 
@@ -454,6 +483,7 @@ local function zb_update_cooldowns(bar, length)
                     bar[index].cooldown = bar[index].duration
                     bar[index].cd:SetCooldown(bar[index].start,bar[index].duration)
                     zb_update_text(bar, index)
+                    zb_resort_icon(bar, length, index)
                 else
                     length = zb_remove_icon(bar, length, index, false)
                     index = index - 1
@@ -502,45 +532,63 @@ local function zb_add_icon(bar, length, id, list, src_guid, dst_guid)
                 end
                 bar[index].flasher:Play()
                 bar[index].is_playing = true
+                zb_resort_icon(bar, length, index)
                 return length
             end
         end
         index = index + 1
     end
-    if length <= total_icons_per_bar then
-        if dst_guid then
-            bar[length].dst_guid = dst_guid
-        else
-            bar[length].dst_guid = nil
+
+    local duration = zb_get_duration(list, id, src_guid)
+    local start = get_time*2-count_delay_from_start
+    local cooldown = start + duration - get_time
+
+    -- A full bar makes room only for a cooldown shorter than its longest one (the last icon).
+    if length > total_icons_per_bar then
+        if cooldown >= bar[length-1].cooldown then
+            return length
         end
-        if list[id].has_charges then
-            bar[length].has_charges = list[id].has_charges - 1
-        end
-        bar[length].src_guid = src_guid
-        bar[length].duration = zb_get_duration(list, id, src_guid)
-
-        bar[length].start = get_time*2-count_delay_from_start
-        bar[length].cooldown = bar[length].start + bar[length].duration - get_time
-
-
-        bar[length].id = id
-        bar[length].list = list
-
-        local _,_,icon = GetSpellInfo(id)
-        bar[length].texture:SetTexture(icon)
-
-        bar[length].cd:SetCooldown(bar[length].start,bar[length].duration)
-
-        bar[length]:Show()
-        bar[length].flasher:Play()
-        bar[length].is_playing = true
-        zb_update_text(bar, length)
-
-
-        zb_frame:SetScript("OnUpdate", zb_on_update)
-        return length + 1
+        length = zb_remove_icon(bar, length, length-1, false)
     end
-    return length
+
+    -- Insert before the first icon with more time left, shifting the rest right.
+    local position = 1
+    while position < length and bar[position].cooldown <= cooldown do
+        position = position + 1
+    end
+    local icon = bar[length]
+    index = length
+    while index > position do
+        bar[index] = bar[index-1]
+        zb_place_icon(bar, index)
+        index = index - 1
+    end
+    bar[position] = icon
+    zb_place_icon(bar, position)
+
+    icon.dst_guid = dst_guid
+    if list[id].has_charges then
+        icon.has_charges = list[id].has_charges - 1
+    end
+    icon.src_guid = src_guid
+    icon.duration = duration
+    icon.start = start
+    icon.cooldown = cooldown
+    icon.id = id
+    icon.list = list
+
+    local _,_,texture = GetSpellInfo(id)
+    icon.texture:SetTexture(texture)
+
+    icon.cd:SetCooldown(icon.start,icon.duration)
+
+    icon:Show()
+    icon.flasher:Play()
+    icon.is_playing = true
+    zb_update_text(bar, position)
+
+    zb_frame:SetScript("OnUpdate", zb_on_update)
+    return length + 1
 end
 
 local function zb_event_type(combat_event, bar, length, id, line, src_guid, dst_guid)
@@ -645,30 +693,34 @@ local function zb_combat_log(timestamp, combat_event, src_guid, src_name, src_fl
     end
 end
 
-local function zb_initialize_bar(bar_x, bar_y, name)
-    local bar = CreateFrame("Frame",nil,UIParent)
+-- border_r/g/b colour the frame around each icon, so the three bars can be told apart.
+local function zb_initialize_bar(offset, name, border_r, border_g, border_b)
+    local bar = CreateFrame("Frame",nil,anchor)
     bar:SetWidth(square_size*4)
     bar:SetHeight(square_size)
-    bar:SetClampedToScreen(true)
-    bar:SetPoint("CENTER", UIParent, "CENTER", bar_x, bar_y)
+    bar:SetPoint("CENTER", anchor, "CENTER", 0, offset)
     bar.name = name
-    local location
     local icon
     local cooldown
+    local border
     local texture
     local text
     local index = 1
     while index <= total_icons_per_bar do
 
-        location = square_size * index + 5 * index
-
         icon = CreateFrame("Frame",nil,bar)
         icon:SetWidth(square_size)
         icon:SetHeight(square_size)
-        icon:SetPoint("CENTER",bar,"CENTER",location,0)
+        bar[index] = icon
+        zb_place_icon(bar, index)
         icon:SetFrameStrata("LOW")
 
-        texture = icon:CreateTexture(nil,"BACKGROUND")
+        border = icon:CreateTexture(nil,"BACKGROUND")
+        border:SetPoint("TOPLEFT", icon, "TOPLEFT", -2, 2)
+        border:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -2)
+        border:SetTexture(border_r, border_g, border_b, 1)
+
+        texture = icon:CreateTexture(nil,"ARTWORK")
         texture:SetAllPoints()
         texture:SetTexCoord(0.07,0.9,0.07,0.90)
 
@@ -705,7 +757,6 @@ local function zb_initialize_bar(bar_x, bar_y, name)
         icon.is_playing = false
 
         icon:Hide()
-        bar[index] = icon
         index = index + 1
     end
     return bar
@@ -751,7 +802,82 @@ local function zb_remove_ex_party_member_icons()
     end
 end
 
+-- Fills each bar with sample icons so it can be seen and positioned out of combat.
+local function zb_test()
+    local test_guid = "zb_test"
+    local added = 0
+    for id in pairs(spells_list) do
+        length_of_player_bar = zb_add_icon(player_bar, length_of_player_bar, id, spells_list, test_guid)
+        length_of_party_bar = zb_add_icon(party_bar, length_of_party_bar, id, spells_list, test_guid)
+        length_of_hostile_bar = zb_add_icon(hostile_bar, length_of_hostile_bar, id, spells_list, test_guid)
+        added = added + 1
+        if added >= 5 then
+            break
+        end
+    end
+end
+
+-- Loads the saved variables, filling in defaults without overwriting what the user set.
+local function zb_load_db()
+    ZakatziBarDB = ZakatziBarDB or {}
+    db = ZakatziBarDB
+    if db.version == nil then
+        -- Positions before the anchor existed were fixed here.
+        if db.locked == nil then db.locked = true end
+        if db.point == nil then db.point = "CENTER" end
+        if db.relative_point == nil then db.relative_point = "CENTER" end
+        if db.x == nil then db.x = -225 end
+        if db.y == nil then db.y = -225 end
+        db.version = DB_VERSION
+    end
+end
+
+local function zb_update_anchor_lock()
+    anchor:EnableMouse(not db.locked)
+    if db.locked then
+        anchor_texture:Hide()
+        anchor_text:Hide()
+    else
+        anchor_texture:Show()
+        anchor_text:Show()
+    end
+end
+
+local function zb_initialize_anchor()
+    anchor = CreateFrame("Frame",nil,UIParent)
+    anchor:SetWidth(square_size*4)
+    anchor:SetHeight(square_size)
+    anchor:SetMovable(true)
+    anchor:SetClampedToScreen(true)
+    anchor:SetFrameStrata("MEDIUM")
+    anchor:SetPoint(db.point, UIParent, db.relative_point, db.x, db.y)
+
+    anchor_texture = anchor:CreateTexture(nil,"BACKGROUND")
+    anchor_texture:SetAllPoints()
+    anchor_texture:SetTexture(0, 0, 0, 0.5)
+
+    anchor_text = anchor:CreateFontString(nil,"OVERLAY")
+    anchor_text:SetFont(STANDARD_TEXT_FONT,12,"OUTLINE")
+    anchor_text:SetPoint("CENTER")
+    anchor_text:SetText("ZakatziBar\n/zb lock")
+
+    anchor:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" and not db.locked then
+            self:StartMoving()
+        end
+    end)
+    anchor:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            self:StopMovingOrSizing()
+            local point, _, relative_point, x, y = self:GetPoint()
+            db.point, db.relative_point, db.x, db.y = point, relative_point, x, y
+        end
+    end)
+    zb_update_anchor_lock()
+end
+
 local function zb_commands(sub_string)
+    sub_string = string.lower(sub_string or "")
     if sub_string == "debug" then
         is_debugging = not is_debugging
         if is_debugging then
@@ -767,8 +893,14 @@ local function zb_commands(sub_string)
     elseif sub_string == "all" then
         all = not all
         print(all and "ZakatziBar: tracking all hostiles." or "ZakatziBar: tracking target and focus only.")
+    elseif sub_string == "lock" then
+        db.locked = not db.locked
+        zb_update_anchor_lock()
+        print(db.locked and "ZakatziBar: locked." or "ZakatziBar: unlocked, drag the box to move the bars.")
+    elseif sub_string == "test" then
+        zb_test()
     else
-        print("Available commands: Debug, clear, disable, all.")
+        print("Available commands: lock, test, clear, all, disable, debug.")
     end
 end
 
@@ -778,14 +910,21 @@ local function zb_on_load(self)
         self:RegisterEvent("PARTY_MEMBERS_CHANGED") -- GROUP_ROSTER_UPDATE
         zb_initialize_variables()
         zb_update_party_guids()
-        player_bar = zb_initialize_bar(player_bar_x, player_bar_y, "zb_player")
-        party_bar = zb_initialize_bar(party_bar_x, party_bar_y, "zb_party")
-        hostile_bar = zb_initialize_bar(hostile_bar_x, hostile_bar_y, "zb_hostile")
+        zb_initialize_anchor()
+        player_bar = zb_initialize_bar(player_bar_offset, "zb_player", 0, 0, 0)
+        party_bar = zb_initialize_bar(party_bar_offset, "zb_party", 0, 0.4, 1)
+        hostile_bar = zb_initialize_bar(hostile_bar_offset, "zb_hostile", 1, 0, 0)
         SlashCmdList["ZAKATZIBAR"] = zb_commands
         SLASH_ZAKATZIBAR1 = "/zb"
 end
 
 local event_handler = {
+    ["ADDON_LOADED"] = function(self, loaded_name)
+        if loaded_name == addon_name then
+            zb_load_db()
+            self:UnregisterEvent("ADDON_LOADED")
+        end
+    end,
     ["PLAYER_LOGIN"] = function(self) zb_on_load(self) end,
     ["PLAYER_ENTERING_WORLD"] = function() zb_entering_world() end,
     ["COMBAT_LOG_EVENT_UNFILTERED"] = function(self,...) zb_combat_log(...) end,
@@ -798,4 +937,5 @@ end
 
 zb_frame = CreateFrame("Frame",nil,UIParent)
 zb_frame:SetScript("OnEvent",zb_on_event)
+zb_frame:RegisterEvent("ADDON_LOADED")
 zb_frame:RegisterEvent("PLAYER_LOGIN")

@@ -57,4 +57,4 @@ Most have been **re-written**, some are new, and several have gained significant
   Re-written and slightly adjusted to feel more responsive.
 
 - **ZakatziBar**  
-  New addon inspired by InterruptBar and TellMeWhen: icon bars for your own, your party's and hostile players' cooldowns, with hostile tracking limited to target and focus via `/zb all`.
+  New addon inspired by InterruptBar and TellMeWhen: icon bars for your own (black border), your party's (blue) and hostile players' (red) cooldowns, sorted by time left. `/zb lock` unlocks a handle to drag the bars (the position is saved), `/zb test` fills them with sample icons, and `/zb all` limits hostile tracking to target and focus.
