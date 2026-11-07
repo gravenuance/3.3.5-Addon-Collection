@@ -1,0 +1,13 @@
+# Editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Packaging output
+*.zip
+release/
