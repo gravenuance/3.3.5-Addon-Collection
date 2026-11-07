@@ -2,5 +2,6 @@
 ## Title: ZakatziBar
 ## Notes: Inspired by InterruptBar and TellMeWhen
 ## DefaultState: Enabled
+## SavedVariables: ZakatziBarDB
 
 ZakatziBar.lua
