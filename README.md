@@ -35,6 +35,9 @@ Most have been **re-written**, some are new, and several have gained significant
 - **FrameSort**  
   Backported version, with further improvements on top of the port. Pins the player frame to a fixed position (top/middle/bottom) in party/raid frames.
 
+- **InterruptBar**  
+  Refactored version of Kollektiv's interrupt tracker, with live timers kept visible in hidden mode and fixed bar repositioning. Configure with `/ib`.
+
 - **OmniCC**  
   Includes fixes for long-standing issues, such as timers not resetting correctly on `ZONE_CHANGE`.
 
@@ -52,3 +55,6 @@ Most have been **re-written**, some are new, and several have gained significant
 
 - **SnowfallKeyPress**  
   Re-written and slightly adjusted to feel more responsive.
+
+- **ZakatziBar**  
+  New addon inspired by InterruptBar and TellMeWhen: icon bars for your own, your party's and hostile players' cooldowns, with hostile tracking limited to target and focus via `/zb all`.
