@@ -1,0 +1,6 @@
+## Interface: 30300
+## Title: ZakatziBar
+## Notes: Inspired by InterruptBar and TellMeWhen
+## DefaultState: Enabled
+
+ZakatziBar.lua

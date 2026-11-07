@@ -1,0 +1,10 @@
+## Interface: 30300
+## Title: Interrupt Bar
+## Notes: Tracks interrupts
+## Version: 1.22
+## Author: Kollektiv et al.
+## DefaultState: Enabled
+## SavedVariables: InterruptBarDB
+
+InterruptBar.lua
+
