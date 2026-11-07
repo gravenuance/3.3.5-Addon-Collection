@@ -1,0 +1,18 @@
+# WoW addon packaging / release artifacts
+*.zip
+release/
+.pkgmeta
+
+# Editor / IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Logs / backups
+*.log
+*.bak
+*~
