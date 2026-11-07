@@ -18,6 +18,8 @@ local length_of_player_bar
 local hostile_bar
 local party_bar
 local player_bar
+-- Event frame; also drives the cooldown OnUpdate
+local zb_frame
 
 -- Delay for more accurate tracking
 local count_delay_from_start
@@ -49,6 +51,7 @@ local player_class
 
 local function zb_initialize_variables()
     player_guid = UnitGUID("player")
+    local _
     _, player_class = UnitClass("player")
 
     all = true
@@ -65,11 +68,11 @@ local function zb_initialize_variables()
 
     is_disabled = false
     is_debugging = false
-    
+
     count_delay_from_start = 0
     update_interval = 0.1
     total_time_elapsed = 0
-    
+
     total_icons_per_bar = 15
     length_of_hostile_bar = 1
     length_of_party_bar = 1
@@ -383,8 +386,8 @@ local function zb_remove_icon(bar, length, id, is_aura, src_guid, dst_guid)
         end
         if not found then
             return length
-        end  
-    end  
+        end
+    end
     length = length - 1
     local index = id
     while index < length do
@@ -403,7 +406,7 @@ local function zb_remove_icon(bar, length, id, is_aura, src_guid, dst_guid)
     bar[length]:Hide()
     bar[length].flasher:Stop()
     bar[length].is_playing = false
-    bar[length].text:SetText("") 
+    bar[length].text:SetText("")
     return length
 end
 
@@ -455,7 +458,7 @@ local function zb_update_cooldowns(bar, length)
                     length = zb_remove_icon(bar, length, index, false)
                     index = index - 1
                 end
-            else 
+            else
                 zb_update_text(bar, index)
                 if get_time - bar[index].start >= 1.9 and bar[index].is_playing then
                     bar[index].is_playing = false
@@ -518,22 +521,22 @@ local function zb_add_icon(bar, length, id, list, src_guid, dst_guid)
 
         bar[length].start = get_time*2-count_delay_from_start
         bar[length].cooldown = bar[length].start + bar[length].duration - get_time
-        
+
 
         bar[length].id = id
         bar[length].list = list
 
         local _,_,icon = GetSpellInfo(id)
         bar[length].texture:SetTexture(icon)
-        
+
         bar[length].cd:SetCooldown(bar[length].start,bar[length].duration)
 
         bar[length]:Show()
         bar[length].flasher:Play()
         bar[length].is_playing = true
         zb_update_text(bar, length)
-        
-        
+
+
         zb_frame:SetScript("OnUpdate", zb_on_update)
         return length + 1
     end
@@ -630,7 +633,7 @@ local function zb_combat_log(timestamp, combat_event, src_guid, src_name, src_fl
                 length_of_player_bar = zb_event_type(combat_event, player_bar, length_of_player_bar, spell_id, player_spells_list, src_guid)
             end
         end
-    elseif spells_list[spell_id] then  
+    elseif spells_list[spell_id] then
         if bit.band(src_flags, COMBATLOG_OBJECT_REACTION_HOSTILE) > 0 then
             if not all and src_guid ~= UnitGUID("target") and src_guid ~= UnitGUID("focus") then
                 return
@@ -642,8 +645,8 @@ local function zb_combat_log(timestamp, combat_event, src_guid, src_name, src_fl
     end
 end
 
-local function zb_initialize_bar(bar, bar_x, bar_y, name)
-    bar = CreateFrame("Frame",nil,UIParent)
+local function zb_initialize_bar(bar_x, bar_y, name)
+    local bar = CreateFrame("Frame",nil,UIParent)
     bar:SetWidth(square_size*4)
     bar:SetHeight(square_size)
     bar:SetClampedToScreen(true)
@@ -664,10 +667,10 @@ local function zb_initialize_bar(bar, bar_x, bar_y, name)
         icon:SetHeight(square_size)
         icon:SetPoint("CENTER",bar,"CENTER",location,0)
         icon:SetFrameStrata("LOW")
-        
+
         texture = icon:CreateTexture(nil,"BACKGROUND")
         texture:SetAllPoints()
-        texture:SetTexCoord(0.07,0.9,0.07,0.90) 
+        texture:SetTexCoord(0.07,0.9,0.07,0.90)
 
         --
         cooldown = CreateFrame("Cooldown",nil, icon, "CooldownFrameTemplate")
@@ -675,7 +678,7 @@ local function zb_initialize_bar(bar, bar_x, bar_y, name)
         cooldown:SetFrameStrata("MEDIUM")
         cooldown.noomnicc = true
         cooldown.noCooldownCount = true
-    
+
         text = cooldown:CreateFontString(nil,"ARTWORK")
         text:SetFont(STANDARD_TEXT_FONT,20,"OUTLINE")
         text:SetTextColor(1,1,0,1)
@@ -702,9 +705,9 @@ local function zb_initialize_bar(bar, bar_x, bar_y, name)
         icon.is_playing = false
 
         icon:Hide()
-        bar[index] = icon 
+        bar[index] = icon
         index = index + 1
-    end   
+    end
     return bar
 end
 
@@ -717,7 +720,7 @@ end
 local function zb_reset_all(bar, length)
     while length > 1 do
         length = zb_remove_icon(bar, length, 1, false)
-    end        
+    end
     return length
 end
 
@@ -753,7 +756,7 @@ local function zb_commands(sub_string)
         is_debugging = not is_debugging
         if is_debugging then
             print("Debugging on.")
-        else 
+        else
             print("Debugging off.")
         end
     elseif sub_string == "clear" then
@@ -775,16 +778,16 @@ local function zb_on_load(self)
         self:RegisterEvent("PARTY_MEMBERS_CHANGED") -- GROUP_ROSTER_UPDATE
         zb_initialize_variables()
         zb_update_party_guids()
-        player_bar = zb_initialize_bar(player_bar, player_bar_x, player_bar_y, "zb_player")
-        party_bar = zb_initialize_bar(party_bar, party_bar_x, party_bar_y, "zb_party")
-        hostile_bar = zb_initialize_bar(hostile_bar, hostile_bar_x, hostile_bar_y, "zb_hostile")
+        player_bar = zb_initialize_bar(player_bar_x, player_bar_y, "zb_player")
+        party_bar = zb_initialize_bar(party_bar_x, party_bar_y, "zb_party")
+        hostile_bar = zb_initialize_bar(hostile_bar_x, hostile_bar_y, "zb_hostile")
         SlashCmdList["ZAKATZIBAR"] = zb_commands
         SLASH_ZAKATZIBAR1 = "/zb"
 end
 
 local event_handler = {
     ["PLAYER_LOGIN"] = function(self) zb_on_load(self) end,
-    ["PLAYER_ENTERING_WORLD"] = function(self) zb_entering_world(self) end,
+    ["PLAYER_ENTERING_WORLD"] = function() zb_entering_world() end,
     ["COMBAT_LOG_EVENT_UNFILTERED"] = function(self,...) zb_combat_log(...) end,
     ["PARTY_MEMBERS_CHANGED"] = function(self) zb_remove_ex_party_member_icons() end,
 }
@@ -793,8 +796,6 @@ local function zb_on_event(self,event,...)
 	event_handler[event](self,...)
 end
 
-if not zb_frame then 
-    CreateFrame("Frame","zb_frame",UIParent)
-end
+zb_frame = CreateFrame("Frame",nil,UIParent)
 zb_frame:SetScript("OnEvent",zb_on_event)
 zb_frame:RegisterEvent("PLAYER_LOGIN")

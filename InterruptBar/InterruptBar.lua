@@ -431,7 +431,7 @@ local cmdfuncs = {
 
 local cmdtbl = {}
 
-function InterruptBar_Command(cmd)
+local function InterruptBar_Command(cmd)
     for i = 1, #cmdtbl do
         cmdtbl[i] = nil
     end
